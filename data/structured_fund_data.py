@@ -3,6 +3,7 @@ from sqlalchemy import create_engine
 import urllib
 import re
 import pandas as pd
+import datetime
 
 
 def get_fund_info():
@@ -14,12 +15,18 @@ def get_fund_info():
     data = reg.findall(text)
     data_list = []
     for row in data:
-        if len(row)>1:
+        if len(row) > 1 and row[0] != '-':
             data_list.append([cell for cell in row.split('</td><td>')])
     data_frame_1 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'establish_date', 'list_date',
                                                     'a_code', 'a_name', 'b_code', 'b_name', 'ratio',
-                                                    'delist_date', 'annual_rate', 'index_code', 'index_name'])
+                                                    'delist_date', 'current_annual_rate', 'index_code',
+                                                    'index_name'])
     data_frame_1 = data_frame_1.set_index('mother_code')
+    data_frame_1['establish_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+                                      for dt_str in data_frame_1['establish_date']]
+    data_frame_1['list_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d') for dt_str in data_frame_1['list_date']]
+    data_frame_1['delist_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+                                   for dt_str in data_frame_1['delist_date']]
     # Extract the useful strings of ratio, and get the ratio of a in 10
     ratio_list = []
     a_in_10_list = []
@@ -65,12 +72,14 @@ def get_fund_info():
     data = reg.findall(text)
     data_list = []
     for row in data:
-        if len(row)>1:
+        if len(row) > 1 and row[0] != '-':
             data_list.append([cell for cell in row.split('</td><td>')])
     data_frame_2 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'rate_adjustment_condition',
                                                     'next_rate_adjustment_date'])
     data_frame_2 = data_frame_2.drop('mother_name', axis=1)
     data_frame_2 = data_frame_2.set_index('mother_code')
+    data_frame_2['next_rate_adjustment_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+                                                 for dt_str in data_frame_2['next_rate_adjustment_date']]
     # Classify the rate adjustment condition
     rate_adjustment_condition_list = []
     for cell in data_frame_2['rate_adjustment_condition']:
@@ -85,11 +94,59 @@ def get_fund_info():
         rate_adjustment_condition_list.append(rate_adjustment_condition)
     data_frame_2['rate_adjustment_condition'] = rate_adjustment_condition_list
 
+    # 3. Get the conversion condition
+    url = 'http://www.abcfund.cn/data/zsinfo.php'
+    text = urllib.request.urlopen(url, timeout=10).read()
+    text = text.decode('GBK')
+    reg = re.compile(r'onclick.*?><td>(.*?)</td><tr')
+    data = reg.findall(text)
+    data_list = []
+    for row in data:
+        if len(row) > 1 and row[0] != '-':
+            data_list.append([cell for cell in row.replace('</td><td>', '<td>').split('<td>')])
+    data_frame_3 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name',
+                                                    'next_regular_conversion_date', 'days from now on',
+                                                    'ascending_conversion_condition',
+                                                    'descending_conversion_condition'])
+    data_frame_3 = data_frame_3.drop(['mother_name', 'days from now on'], axis=1)
+    data_frame_3 = data_frame_3.set_index('mother_code')
+    data_frame_3['next_regular_conversion_date'] = [__str_to_datetime(dt_str, '%Y年%m月%d日')
+                                                    for dt_str in data_frame_3['next_regular_conversion_date']]
+    # Extract the values of conversion condition
+    ascending_conversion_condition_list = []
+    for cell in data_frame_3['ascending_conversion_condition']:
+        if cell == '-':
+            ascending_conversion_condition = 0
+        else:
+            ascending_conversion_condition = float(cell[7:])
+        ascending_conversion_condition_list.append(ascending_conversion_condition)
+    data_frame_3['ascending_conversion_condition'] = ascending_conversion_condition_list
+    descending_conversion_condition_list = []
+    for cell in data_frame_3['descending_conversion_condition']:
+        if cell == '-':
+            descending_conversion_condition = 0
+        elif cell[0] == 'B':
+            descending_conversion_condition = float(cell[6:])
+        else:
+            descending_conversion_condition = float(cell[7:]) * (-1)
+        descending_conversion_condition_list.append(descending_conversion_condition)
+    data_frame_3['descending_conversion_condition'] = descending_conversion_condition_list
+
     # Join the data frames together
-    data_frame = data_frame_1.join(data_frame_2)
+    data_frame = data_frame_1.join([data_frame_2, data_frame_3])
+
     # Save the data into sqlite database
     engine = create_engine('sqlite:///fund.db', echo=True)
     data_frame.to_sql('structured_fund_info', engine, if_exists='append')
+
+
+def __str_to_datetime(dt_str, dt_format):
+    # Convert format 'string' to 'datetime'
+    try:
+        dt_datetime = datetime.datetime.strptime(dt_str, dt_format)
+    except ValueError:
+        dt_datetime = None
+    return dt_datetime
 
 
 if __name__ == '__main__':
