@@ -150,10 +150,10 @@ def get_fund_info():
         descending_conversion_condition_list.append(descending_conversion_condition)
     data_frame_3['descending_conversion_condition'] = descending_conversion_condition_list
 
-    # Join the data frames together
+    # 4. Join the data frames together
     data_frame = data_frame_1.join([data_frame_2, data_frame_3])
 
-    # Save the data into sqlite database
+    # 5. Save the data into sqlite database
     engine = create_engine('sqlite:///fund.db', echo=True)
     data_frame.to_sql('structured_fund_info', engine, if_exists='append')
 
