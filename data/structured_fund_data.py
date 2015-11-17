@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 from sqlalchemy import create_engine
+import logging
 import urllib
 import re
 import pandas as pd
 import datetime
+import tushare as ts
 
 
 def get_fund_info():
@@ -22,10 +24,10 @@ def get_fund_info():
                                                     'delist_date', 'current_annual_rate', 'index_code',
                                                     'index_name'])
     data_frame_1 = data_frame_1.set_index('mother_code')
-    data_frame_1['establish_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+    data_frame_1['establish_date'] = [_str_to_datetime(dt_str, '%Y-%m-%d')
                                       for dt_str in data_frame_1['establish_date']]
-    data_frame_1['list_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d') for dt_str in data_frame_1['list_date']]
-    data_frame_1['delist_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+    data_frame_1['list_date'] = [_str_to_datetime(dt_str, '%Y-%m-%d') for dt_str in data_frame_1['list_date']]
+    data_frame_1['delist_date'] = [_str_to_datetime(dt_str, '%Y-%m-%d')
                                    for dt_str in data_frame_1['delist_date']]
     # Extract the useful strings of ratio, and get the ratio of a in 10
     ratio_list = []
@@ -39,31 +41,47 @@ def get_fund_info():
         a_in_10_list.append(a_in_10)
     data_frame_1['ratio'] = ratio_list
     data_frame_1.insert(8, 'a_in_10', a_in_10_list)
-    # Extract the useful strings of annual_rate and rate_rule
-    annual_rate_list = []
+    # Extract the useful strings of current_annual_rate and rate_rule
+    current_annual_rate_list = []
     rate_rule_list = []
     reg = re.compile('\+\d%')
-    for cell in data_frame_1['annual_rate']:
+    for cell in data_frame_1['current_annual_rate']:
         data = cell.split('<br><font color=#696969>')
         if len(data) > 1:
-            annual_rate = data[0]
+            current_annual_rate = data[0]
             rate_rule = data[1][:-7]
+            if rate_rule == '固定':
+                rate_rule = data[0]
             if rate_rule[:2] == '1年':
                 rate_rule = rate_rule[2:]
                 if reg.match(rate_rule):
                     rate_rule = rate_rule[:-1] + '.0%'
         else:
-            annual_rate = ''
-            rate_rule = data[0]
+            current_annual_rate = '-'
+            rate_rule = data[0][:2]
             # The data of fund '163109-150022-150023' i crawl from abcfund is wrong, so i correct it myself.
             if rate_rule == '6%':
-                annual_rate = '5.75%'
+                current_annual_rate = '5.75%'
                 rate_rule = '+3.0%'
-        annual_rate_list.append(annual_rate)
+        current_annual_rate_list.append(current_annual_rate)
         rate_rule_list.append(rate_rule)
-    data_frame_1['annual_rate'] = annual_rate_list
+    data_frame_1['current_annual_rate'] = current_annual_rate_list
     data_frame_1.insert(11, 'rate_rule', rate_rule_list)
-
+    # Get the one-year deposit rate
+    deposit_name, deposit_rate = ts.get_deposit_rate().loc[6, ['deposit_type', 'rate']]
+    if deposit_name == '定期存款整存整取(一年)':
+        deposit_rate = float(deposit_rate)
+    else:
+        logging.error('Failure in getting deposit rate!')
+        deposit_rate = 1.5
+    # Convert the format of current annual rate from string to number, then calculate the next annual rate, and make
+    # both formats 'string' and 'number' of it
+    data_frame_1.insert(11, 'num_current_annual_rate', [_str_to_float(n_str[:-1], multiplier=0.01)
+                                                        for n_str in data_frame_1['current_annual_rate']])
+    data_frame_1.insert(13, 'num_next_annual_rate', [_calculate_next_annual_rate(rate_rule, deposit_rate)
+                                                     for rate_rule in data_frame_1['rate_rule']])
+    data_frame_1.insert(13, 'next_annual_rate', [_float_to_str(n_float, multiplier=100, append='%')
+                                                 for n_float in data_frame_1['num_next_annual_rate']])
     # 2. Get the info of rate adjustment
     url = 'http://www.abcfund.cn/data/arateadjustment.php'
     text = urllib.request.urlopen(url, timeout=10).read()
@@ -78,7 +96,7 @@ def get_fund_info():
                                                     'next_rate_adjustment_date'])
     data_frame_2 = data_frame_2.drop('mother_name', axis=1)
     data_frame_2 = data_frame_2.set_index('mother_code')
-    data_frame_2['next_rate_adjustment_date'] = [__str_to_datetime(dt_str, '%Y-%m-%d')
+    data_frame_2['next_rate_adjustment_date'] = [_str_to_datetime(dt_str, '%Y-%m-%d')
                                                  for dt_str in data_frame_2['next_rate_adjustment_date']]
     # Classify the rate adjustment condition
     rate_adjustment_condition_list = []
@@ -110,7 +128,7 @@ def get_fund_info():
                                                     'descending_conversion_condition'])
     data_frame_3 = data_frame_3.drop(['mother_name', 'days from now on'], axis=1)
     data_frame_3 = data_frame_3.set_index('mother_code')
-    data_frame_3['next_regular_conversion_date'] = [__str_to_datetime(dt_str, '%Y年%m月%d日')
+    data_frame_3['next_regular_conversion_date'] = [_str_to_datetime(dt_str, '%Y年%m月%d日')
                                                     for dt_str in data_frame_3['next_regular_conversion_date']]
     # Extract the values of conversion condition
     ascending_conversion_condition_list = []
@@ -140,13 +158,37 @@ def get_fund_info():
     data_frame.to_sql('structured_fund_info', engine, if_exists='append')
 
 
-def __str_to_datetime(dt_str, dt_format):
+def _str_to_datetime(dt_str, dt_format):
     # Convert format 'string' to 'datetime'
     try:
         dt_datetime = datetime.datetime.strptime(dt_str, dt_format)
     except ValueError:
         dt_datetime = None
     return dt_datetime
+
+
+def _str_to_float(n_str, multiplier=1):
+    try:
+        n_num = float(n_str) * multiplier
+    except ValueError:
+        n_num = 0
+    return n_num
+
+
+def _calculate_next_annual_rate(rate_rule, deposit_rate):
+    if '+' in rate_rule:
+        return deposit_rate / 100 + float(rate_rule[1:-1]) / 100
+    elif rate_rule == '特殊':
+        return 0
+    else:
+        return float(rate_rule[:-1]) / 100
+
+
+def _float_to_str(n_float, multiplier=1, append=''):
+    if n_float == 0:
+        return '-'
+    else:
+        return str(n_float * multiplier) + append
 
 
 if __name__ == '__main__':
