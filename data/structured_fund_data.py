@@ -154,7 +154,7 @@ def get_fund_info():
     data_frame = data_frame_1.join([data_frame_2, data_frame_3])
 
     # 5. Save the data into sqlite database
-    engine = create_engine('sqlite:///fund.db', echo=True)
+    engine = create_engine('sqlite:///data/fund.db', echo=True)
     data_frame.to_sql('structured_fund_info', engine, if_exists='append')
 
 
