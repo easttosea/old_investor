@@ -1,4 +1,5 @@
 import sys
+import time
 import sqlite3
 import tushare as ts
 from structured_fund import window
@@ -141,19 +142,21 @@ def update_realtime_quotations():
         table = realtime_quotations(code_list)
         for row in table:
             structure_fund_a[row[0]].update_data(row[2:])
-
+            timestamp = row[13]
+    structured_fund_window.signal_fill_table.emit(list(structure_fund_a.keys()), structure_fund_a)
+    structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：{1}'.format(
+       time.strftime('%H:%M:%S', time.localtime()), timestamp))
 
 if __name__ == '__main__':
     init_fund_info()
-    update_realtime_quotations()
+#    update_realtime_quotations()
     print(structure_fund_a['150152'].a_net_value)
 
     app = QtWidgets.QApplication(sys.argv)
     structured_fund_window = window.MyWindow()
     structured_fund_window.fill_the_table(structure_fund_a.keys(), structure_fund_a)
     structured_fund_window.show()
-#    structured_fund_window.signal_fill_table.emit(code_a_list, fund_a)
-#    structured_fund_window.timer = QtCore.QTimer()
-#    structured_fund_window.timer.timeout.connect(update_data)
-#    structured_fund_window.timer.start(1000)
+    structured_fund_window.timer = QtCore.QTimer()
+    structured_fund_window.timer.timeout.connect(update_realtime_quotations)
+    structured_fund_window.timer.start(1000)
     sys.exit(app.exec_())
