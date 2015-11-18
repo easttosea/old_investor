@@ -150,11 +150,33 @@ def get_fund_info():
         descending_conversion_condition_list.append(descending_conversion_condition)
     data_frame_3['descending_conversion_condition'] = descending_conversion_condition_list
 
+    # 4. Get the net value of mother fund, a and b
+    url = 'http://www.abcfund.cn/data/premium.php'
+    text = urllib.request.urlopen(url, timeout=10).read()
+    text = text.decode('GBK')
+    reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
+    data = reg.findall(text)
+    data_list = []
+    for row in data:
+        if len(row) > 1 and '-</td>' not in row:
+            data_list.append([cell for cell in row.split('</td><td>')])
+    data_frame_4 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'mother_net_value', 'a_code',
+                                                    'a_name', 'a_net_value', 'a_price', 'a_premium', 'a_volume',
+                                                    'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
+                                                    'b_volume', 'whole_volume'])
+    data_frame_4 = data_frame_4.drop(['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume',
+                                      'b_code', 'b_name', 'b_price', 'b_premium', 'b_volume', 'whole_volume'
+                                      ], axis=1)
+    data_frame_4 = data_frame_4.set_index('mother_code')
+    data_frame_4['mother_net_value'] = data_frame_4['mother_net_value'].map(float)
+    data_frame_4['a_net_value'] = data_frame_4['a_net_value'].map(float)
+    data_frame_4['b_net_value'] = data_frame_4['b_net_value'].map(float)
+
     # 4. Join the data frames together
-    data_frame = data_frame_1.join([data_frame_2, data_frame_3])
+    data_frame = data_frame_1.join([data_frame_2, data_frame_3, data_frame_4])
 
     # 5. Save the data into sqlite database
-    engine = create_engine('sqlite:///data/fund.db', echo=True)
+    engine = create_engine('sqlite:///fund.db', echo=True)
     data_frame.to_sql('structured_fund_info', engine, if_exists='append')
 
 
