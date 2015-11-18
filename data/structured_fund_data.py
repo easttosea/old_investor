@@ -215,4 +215,3 @@ def _float_to_str(n_float, multiplier=1, append=''):
 
 if __name__ == '__main__':
     print(get_fund_info())
-
