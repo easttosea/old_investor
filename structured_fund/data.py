@@ -1,5 +1,8 @@
+import sys
 import sqlite3
 import tushare as ts
+from structured_fund import window
+from PyQt5 import QtWidgets, QtCore
 
 
 structure_fund_mother = {}
@@ -52,49 +55,49 @@ class StructuredFund(object):
         self.a_premium_rate = 0
 
     def update_data(self, value):
-        self.a_price = float(value[1])
-        self.a_volume = int(value[2])
-        self.a_amount = float(value[3])
-        self.a_bid = float(value[4])
+        self.a_price = float(value[0])
+        self.a_volume = int(value[1])
+        self.a_amount = float(value[2])
+        self.a_bid = float(value[3])
         try:
-            self.a_b1_v = int(value[5])
+            self.a_b1_v = int(value[4])
         except ValueError:
             self.a_b1_v = 0
-        self.a_ask = float(value[6])
+        self.a_ask = float(value[5])
         try:
-            self.a_a1_v = int(value[7])
+            self.a_a1_v = int(value[6])
         except ValueError:
             self.a_a1_v = 0
-        self.a_high = float(value[8])
-        self.a_low = float(value[9])
-        self.a_pre_close = float(value[10])
-        self.a_today_open = float(value[11])
-        self.a_timestamp = value[12]
+        self.a_high = float(value[7])
+        self.a_low = float(value[8])
+        self.a_pre_close = float(value[9])
+        self.a_today_open = float(value[10])
+        self.a_timestamp = value[11]
         self.a_increase_value = self.a_price - self.a_pre_close
         self.a_increase_percentage = self.a_increase_value / self.a_pre_close
         self.a_premium_rate = (self.a_price - self.a_net_value) / self.a_net_value
 
     def format_data(self):
         # The variables are transformed to strings for display
-        code = self.code
-        name = self.name
-        price = str('{0:.3f}'.format(self.price))
-        increase_percentage = str('{0:.2f}'.format(self.increase_percentage * 100)) + '%'
-        amount = str('{0:.1f}'.format(self.amount / 10000)) + '万'
-        bid = str('{0:.3f}'.format(self.bid))
-        b1_v = str(self.b1_v)
-        ask = str('{0:.3f}'.format(self.ask))
-        a1_v = str(self.a1_v)
-        high = str('{0:.3f}'.format(self.high))
-        low = str('{0:.3f}'.format(self.low))
-        pre_close = str('{0:.3f}'.format(self.pre_close))
-        today_open = str('{0:.3f}'.format(self.today_open))
-        timestamp = self.timestamp
-        premium_rate = str('{0:.2f}'.format(self.premium_rate * 100)) + '%'
-        net_value = str('{0:.3f}'.format(self.net_value))
+        code = self.a_code
+        name = self.a_name
+        price = str('{0:.3f}'.format(self.a_price))
+        increase_percentage = str('{0:.2f}'.format(self.a_increase_percentage * 100)) + '%'
+        amount = str('{0:.1f}'.format(self.a_amount / 10000)) + '万'
+        bid = str('{0:.3f}'.format(self.a_bid))
+        b1_v = str(self.a_b1_v)
+        ask = str('{0:.3f}'.format(self.a_ask))
+        a1_v = str(self.a_a1_v)
+        high = str('{0:.3f}'.format(self.a_high))
+        low = str('{0:.3f}'.format(self.a_low))
+        pre_close = str('{0:.3f}'.format(self.a_pre_close))
+        today_open = str('{0:.3f}'.format(self.a_today_open))
+        timestamp = self.a_timestamp
+        premium_rate = str('{0:.2f}'.format(self.a_premium_rate * 100)) + '%'
+        net_value = str('{0:.3f}'.format(self.a_net_value))
 #        annual_yield = str('{0:.3f}'.format(self.annual_yield * 100)) + '%'
 
-        return code, name, price, increase_percentage, net_value, premium_rate, amount, ask, a1_v, bid, b1_v, \
+        return code, name, price, increase_percentage, net_value, premium_rate, amount, bid, b1_v, ask, a1_v, \
             high, low, pre_close, today_open
 
 
@@ -133,7 +136,7 @@ def init_fund_info():
 
 
 def update_realtime_quotations():
-    code_a_list_split_30 = format_code_list(structure_fund_a.keys())
+    code_a_list_split_30 = format_code_list(list(structure_fund_a.keys()))
     for code_list in code_a_list_split_30:
         table = realtime_quotations(code_list)
         for row in table:
@@ -142,4 +145,15 @@ def update_realtime_quotations():
 
 if __name__ == '__main__':
     init_fund_info()
+    update_realtime_quotations()
     print(structure_fund_a['150152'].a_net_value)
+
+    app = QtWidgets.QApplication(sys.argv)
+    structured_fund_window = window.MyWindow()
+    structured_fund_window.fill_the_table(structure_fund_a.keys(), structure_fund_a)
+    structured_fund_window.show()
+#    structured_fund_window.signal_fill_table.emit(code_a_list, fund_a)
+#    structured_fund_window.timer = QtCore.QTimer()
+#    structured_fund_window.timer.timeout.connect(update_data)
+#    structured_fund_window.timer.start(1000)
+    sys.exit(app.exec_())
