@@ -137,29 +137,26 @@ def init_fund_info():
 
 
 def update_realtime_quotations():
-    code_a_list_split_30 = format_code_list(list(structure_fund_a.keys()))
-    for code_list in code_a_list_split_30:
-        table = realtime_quotations(code_list)
-        for row in table:
-            structure_fund_a[row[0]].update_data(row[2:])
-            timestamp = row[13]
-#    ss = sorted(structure_fund_a.items(), key=lambda d:d[1].a_code, reverse=False)
-#    structure_fund_a_code = [key for key, value in ss]
-#    structured_fund_window.signal_fill_table.emit(structure_fund_a_code, structure_fund_a)
-    structured_fund_window.signal_fill_table.emit(list(structure_fund_a.keys()), structure_fund_a)
-    structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：{1}'.format(
-       time.strftime('%H:%M:%S', time.localtime()), timestamp))
+    conn = sqlite3.connect('../data/fund.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM structured_fund_a ORDER BY code')
+    table = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    structured_fund_window.signal_fill_table.emit(table)
+    structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
+       time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
 
 
 
 if __name__ == '__main__':
     init_fund_info()
 #    update_realtime_quotations()
-    print(structure_fund_a['150152'].a_net_value)
+#    print(structure_fund_a['150152'].a_net_value)
 
     app = QtWidgets.QApplication(sys.argv)
     structured_fund_window = window.MyWindow()
-    structured_fund_window.fill_the_table(structure_fund_a.keys(), structure_fund_a)
+#    structured_fund_window.fill_the_table(structure_fund_a.keys(), structure_fund_a)
     structured_fund_window.show()
     structured_fund_window.timer = QtCore.QTimer()
     structured_fund_window.timer.timeout.connect(update_realtime_quotations)

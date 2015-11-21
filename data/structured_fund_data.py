@@ -229,44 +229,32 @@ class StructuredFund(object):
         cursor.close()
         conn.close()
 
-    def format_code_list(self, symbols):
-        # convert code to list, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
-        if isinstance(symbols, str):
-            code_list = [[symbols]]
-            return code_list
-        else:
-            code_list = []
-            i = 0
-            while i < len(symbols):
-                code_list.append(symbols[i:i+30])
-                i += 30
-            return code_list
-
     def update_realtime_quotations(self):
-        fund_a_code_split_30 = self.format_code_list(self.fund_a_code)
-        data_frame = pd.DataFrame()
-        for code_list in fund_a_code_split_30:
-            table = self.realtime_quotations(code_list)
-            table = table.set_index('code')
-            data_frame = pd.concat([data_frame, table])
-
+        data_frame = _realtime_quotations(self.fund_a_code)
         engine = create_engine('sqlite:///fund.db', echo=True)
         data_frame.to_sql('structured_fund_a', engine, if_exists='append')
 
-#            for row in table:
-#                structure_fund_a[row[0]].update_data(row[2:])
-#                timestamp = row[13]
-    #    ss = sorted(structure_fund_a.items(), key=lambda d:d[1].a_code, reverse=False)
-    #    structure_fund_a_code = [key for key, value in ss]
-    #    structured_fund_window.signal_fill_table.emit(structure_fund_a_code, structure_fund_a)
-#        structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：{1}'.format(
-#           time.strftime('%H:%M:%S', time.localtime()), timestamp))
 
-    def realtime_quotations(self, code_list):
-        # Get realtime quotations, and put them in the list, in the format of [(code1, values), (code2, values2) ... ]
-        table = ts.get_realtime_quotes(code_list)[['code', 'name', 'price', 'volume', 'amount', 'bid', 'b1_v',
-                                                   'ask', 'a1_v', 'high', 'low', 'pre_close', 'open', 'time']]
-        return table
+def _realtime_quotations(self, symbols):
+    # Get the list split by 30 codes, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
+    if isinstance(symbols, str):
+        code_list = [[symbols]]
+    else:
+        code_list = []
+        i = 0
+        while i < len(symbols):
+            code_list.append(symbols[i:i+30])
+            i += 30
+    # Get realtime quotations, in the format of data frame.
+    data_frame = pd.DataFrame()
+    for code_list_split_30 in code_list:
+        table = ts.get_realtime_quotes(code_list_split_30).loc[
+            :, ['code', 'name', 'price', 'volume', 'amount', 'b1_p', 'b1_v', 'b2_p', 'b2_v', 'b3_p',
+                'b3_v', 'b4_p', 'b4_v', 'b5_p', 'b5_v', 'a1_p', 'a1_v', 'a2_p', 'a2_v', 'a3_p', 'a3_v',
+                'a4_p', 'a4_v', 'a5_p', 'a5_v', 'high', 'low', 'pre_close', 'open', 'date', 'time']]
+        table = table.set_index('code')
+        data_frame = pd.concat([data_frame, table])
+    return data_frame
 
 if __name__ == '__main__':
     structured_fund = StructuredFund()
