@@ -13,7 +13,8 @@ class StructuredFund(object):
     def __init__(self):
         self.fund_a_code = []
         self.fund_b_code = []
-#        self.init_fund_info()
+        self.data_frame = {}
+        self.init_fund_info()
         self.init_fund_code()
 
     def init_fund_info(self):
@@ -32,11 +33,12 @@ class StructuredFund(object):
                                                         'delist_date', 'current_annual_rate', 'index_code',
                                                         'index_name'])
         data_frame_1 = data_frame_1.set_index('mother_code')
-        data_frame_1['establish_date'] = [self._str_to_datetime(dt_str, '%Y-%m-%d')
-                                          for dt_str in data_frame_1['establish_date']]
-        data_frame_1['list_date'] = [self._str_to_datetime(dt_str, '%Y-%m-%d') for dt_str in data_frame_1['list_date']]
-        data_frame_1['delist_date'] = [self._str_to_datetime(dt_str, '%Y-%m-%d')
-                                       for dt_str in data_frame_1['delist_date']]
+        data_frame_1['establish_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d') for cell in
+                                          data_frame_1['establish_date']]
+        data_frame_1['list_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d') for cell in
+                                     data_frame_1['list_date']]
+        data_frame_1['delist_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d')
+                                       for cell in data_frame_1['delist_date']]
         # Extract the useful strings of ratio, and get the ratio of a in 10
         ratio_list = []
         a_in_10_list = []
@@ -84,12 +86,12 @@ class StructuredFund(object):
             deposit_rate = 1.5
         # Convert the format of current annual rate from string to number, then calculate the next annual rate, and make
         # both formats 'string' and 'number' of it
-        data_frame_1.insert(11, 'num_current_annual_rate', [self._str_to_float(n_str[:-1], multiplier=0.01)
+        data_frame_1.insert(11, 'num_current_annual_rate', [_format_convert(n_str[:-1], 'float')/100
                                                             for n_str in data_frame_1['current_annual_rate']])
         data_frame_1.insert(13, 'num_next_annual_rate', [self._calculate_next_annual_rate(rate_rule, deposit_rate)
                                                          for rate_rule in data_frame_1['rate_rule']])
-        data_frame_1.insert(13, 'next_annual_rate', [self._float_to_str(n_float, multiplier=100, append='%')
-                                                     for n_float in data_frame_1['num_next_annual_rate']])
+        data_frame_1.insert(13, 'next_annual_rate', [str(cell * 100) + '%' for cell in
+                                                     data_frame_1['num_next_annual_rate']])
         # 2. Get the info of rate adjustment
         url = 'http://www.abcfund.cn/data/arateadjustment.php'
         text = urllib.request.urlopen(url, timeout=10).read()
@@ -104,8 +106,8 @@ class StructuredFund(object):
                                                         'next_rate_adjustment_date'])
         data_frame_2 = data_frame_2.drop('mother_name', axis=1)
         data_frame_2 = data_frame_2.set_index('mother_code')
-        data_frame_2['next_rate_adjustment_date'] = [self._str_to_datetime(dt_str, '%Y-%m-%d')
-                                                     for dt_str in data_frame_2['next_rate_adjustment_date']]
+        data_frame_2['next_rate_adjustment_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d')
+                                                     for cell in data_frame_2['next_rate_adjustment_date']]
         # Classify the rate adjustment condition
         rate_adjustment_condition_list = []
         for cell in data_frame_2['rate_adjustment_condition']:
@@ -136,8 +138,8 @@ class StructuredFund(object):
                                                         'descending_conversion_condition'])
         data_frame_3 = data_frame_3.drop(['mother_name', 'days from now on'], axis=1)
         data_frame_3 = data_frame_3.set_index('mother_code')
-        data_frame_3['next_regular_conversion_date'] = [self._str_to_datetime(dt_str, '%Y年%m月%d日')
-                                                        for dt_str in data_frame_3['next_regular_conversion_date']]
+        data_frame_3['next_regular_conversion_date'] = [_format_convert(cell, 'datetime', '%Y年%m月%d日') for
+                                                        cell in data_frame_3['next_regular_conversion_date']]
         # Extract the values of conversion condition
         ascending_conversion_condition_list = []
         for cell in data_frame_3['ascending_conversion_condition']:
@@ -181,26 +183,11 @@ class StructuredFund(object):
         data_frame_4['b_net_value'] = data_frame_4['b_net_value'].map(float)
 
         # 4. Join the data frames together
-        data_frame = data_frame_1.join([data_frame_2, data_frame_3, data_frame_4])
+        self.data_frame = data_frame_1.join([data_frame_2, data_frame_3, data_frame_4])
 
         # 5. Save the data into sqlite database
-        engine = create_engine('sqlite:///fund.db', echo=True)
-        data_frame.to_sql('structured_fund_info', engine, if_exists='append')
-
-    def _str_to_datetime(self, dt_str, dt_format):
-        # Convert format 'string' to 'datetime'
-        try:
-            dt_datetime = datetime.datetime.strptime(dt_str, dt_format)
-        except ValueError:
-            dt_datetime = None
-        return dt_datetime
-
-    def _str_to_float(self, n_str, multiplier=1):
-        try:
-            n_num = float(n_str) * multiplier
-        except ValueError:
-            n_num = 0
-        return n_num
+        engine = create_engine('sqlite:///fund.db')
+        self.data_frame.to_sql('structured_fund_info', engine, if_exists='replace')
 
     def _calculate_next_annual_rate(self, rate_rule, deposit_rate):
         if '+' in rate_rule:
@@ -209,12 +196,6 @@ class StructuredFund(object):
             return 0
         else:
             return float(rate_rule[:-1]) / 100
-
-    def _float_to_str(self, n_float, multiplier=1, append=''):
-        if n_float == 0:
-            return '-'
-        else:
-            return str(n_float * multiplier) + append
 
     def init_fund_code(self):
         conn = sqlite3.connect('fund.db')
@@ -231,11 +212,12 @@ class StructuredFund(object):
 
     def update_realtime_quotations(self):
         data_frame = _realtime_quotations(self.fund_a_code)
-        engine = create_engine('sqlite:///fund.db', echo=True)
-        data_frame.to_sql('structured_fund_a', engine, if_exists='append')
+        data_frame = self.data_frame.join(data_frame, on='a_code', how='inner')
+        engine = create_engine('sqlite:///fund.db')
+        data_frame.to_sql('structured_fund_a', engine, if_exists='replace')
 
 
-def _realtime_quotations(self, symbols):
+def _realtime_quotations(symbols):
     # Get the list split by 30 codes, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
     if isinstance(symbols, str):
         code_list = [[symbols]]
@@ -254,9 +236,33 @@ def _realtime_quotations(self, symbols):
                 'a4_p', 'a4_v', 'a5_p', 'a5_v', 'high', 'low', 'pre_close', 'open', 'date', 'time']]
         table = table.set_index('code')
         data_frame = pd.concat([data_frame, table])
+    for column in ['volume', 'b1_v', 'b2_v', 'b3_v', 'b4_v', 'b5_v', 'a1_v', 'a2_v', 'a3_v', 'a4_v',
+                   'a5_v']:
+        data_frame[column] = [_format_convert(cell, 'int') for cell in data_frame[column]]
+    for column in ['price', 'amount', 'b1_p', 'b2_p', 'b3_p', 'b4_p', 'b5_p', 'a1_p', 'a2_p', 'a3_p',
+                   'a4_p', 'a5_p', 'high', 'low', 'pre_close', 'open']:
+        data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
     return data_frame
+
+
+def _format_convert(source_data, target_type, source_format=''):
+    if target_type == 'int':
+        try:
+            return int(source_data)
+        except ValueError:
+            return 0
+    elif target_type == 'float':
+        try:
+            return float(source_data)
+        except ValueError:
+            return 0.0
+    elif target_type == 'datetime':
+        try:
+            return datetime.datetime.strptime(source_data, source_format)
+        except ValueError:
+            return None
+
 
 if __name__ == '__main__':
     structured_fund = StructuredFund()
-#    print(structured_fund.fund_a_code)
     structured_fund.update_realtime_quotations()
