@@ -28,5 +28,3 @@ class Ui_Form_structured_fund(object):
     def retranslateUi(self, Form_structured_fund):
         _translate = QtCore.QCoreApplication.translate
         Form_structured_fund.setWindowTitle(_translate("Form_structured_fund", "分级基金"))
-        self.tableWidget_structured_fund.setSortingEnabled(True)
-

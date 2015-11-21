@@ -143,9 +143,14 @@ def update_realtime_quotations():
         for row in table:
             structure_fund_a[row[0]].update_data(row[2:])
             timestamp = row[13]
+#    ss = sorted(structure_fund_a.items(), key=lambda d:d[1].a_code, reverse=False)
+#    structure_fund_a_code = [key for key, value in ss]
+#    structured_fund_window.signal_fill_table.emit(structure_fund_a_code, structure_fund_a)
     structured_fund_window.signal_fill_table.emit(list(structure_fund_a.keys()), structure_fund_a)
     structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：{1}'.format(
        time.strftime('%H:%M:%S', time.localtime()), timestamp))
+
+
 
 if __name__ == '__main__':
     init_fund_info()
