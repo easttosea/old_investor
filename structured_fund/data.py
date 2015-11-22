@@ -1,164 +1,295 @@
-import sys
-import time
-import sqlite3
+# -*- coding: utf-8 -*-
+from sqlalchemy import create_engine
+import logging
+import urllib
+import re
+import pandas as pd
+import datetime
 import tushare as ts
-from structured_fund import window
-from PyQt5 import QtWidgets, QtCore
-
-
-structure_fund_mother = {}
-structure_fund_a = {}
-structure_fund_b = {}
+import sqlite3
 
 
 class StructuredFund(object):
-    def __init__(self, values):
-        self.mother_code = values[0]
-        self.mother_name = values[1]
-        self.establish_date = values[2]
-        self.list_date = values[3]
-        self.a_code = values[4]
-        self.a_name = values[5]
-        self.b_code = values[6]
-        self.b_name = values[7]
-        self.ratio = values[8]
-        self.a_in_10 = values[9]
-        self.delist_date = values[10]
-        self.current_annual_rate = values[11]
-        self.num_current_annual_rate = values[12]
-        self.rate_rule = values[13]
-        self.next_annual_rate = values[14]
-        self.num_next_annual_rate = values[15]
-        self.index_code = values[16]
-        self.index_name = values[17]
-        self.rate_adjustment_condition = values[18]
-        self.next_rate_adjustment_date = values[19]
-        self.next_regular_conversion_date = values[20]
-        self.ascending_conversion_condition = values[21]
-        self.descending_conversion_condition = values[22]
-        self.mother_net_value = values[23]
-        self.a_net_value = values[24]
-        self.b_net_value = values[25]
-        self.a_price = 0
-        self.a_increase_percentage = 0
-        self.a_increase_value = 0
-        self.a_volume = 0
-        self.a_amount = 0
-        self.a_bid = 0
-        self.a_b1_v = 0
-        self.a_ask = 0
-        self.a_a1_v = 0
-        self.a_high = 0
-        self.a_low = 0
-        self.a_pre_close = 0
-        self.a_today_open = 0
-        self.a_timestamp = ''
-        self.a_premium_rate = 0
+    def __init__(self):
+        self.fund_a_code = []
+        self.fund_b_code = []
+        self.data_frame = None
+        self.frame_info = None
+        self.frame_a = None
+        self.TODAY_DATE = datetime.date.today()
 
-    def update_data(self, value):
-        self.a_price = float(value[0])
-        self.a_volume = int(value[1])
-        self.a_amount = float(value[2])
-        self.a_bid = float(value[3])
+    def init_fund_info(self):
+        # 1. Get the basic info
+        url = 'http://www.abcfund.cn/style/home.php?style=0'
+        text = urllib.request.urlopen(url, timeout=10).read()
+        text = text.decode('GBK')
+        reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
+        data = reg.findall(text)
+        data_list = []
+        for row in data:
+            if len(row) > 1 and row[0] != '-':
+                data_list.append([cell for cell in row.split('</td><td>')])
+        data_frame_1 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'establish_date', 'list_date',
+                                                        'a_code', 'a_name', 'b_code', 'b_name', 'ratio',
+                                                        'delist_date', 'current_annual_rate', 'index_code',
+                                                        'index_name'])
+        data_frame_1 = data_frame_1.set_index('mother_code')
+        data_frame_1['establish_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d') for cell in
+                                          data_frame_1['establish_date']]
+        data_frame_1['list_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d') for cell in
+                                     data_frame_1['list_date']]
+        data_frame_1['delist_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d')
+                                       for cell in data_frame_1['delist_date']]
+        # Extract the useful strings of ratio, and get the ratio of a in 10
+        ratio_list = []
+        a_in_10_list = []
+        for cell in data_frame_1['ratio']:
+            ratio = cell[-3:]
+            if ratio == '1:1':
+                ratio = '5:5'
+            ratio_list.append(ratio)
+            a_in_10 = int(ratio[0:1])
+            a_in_10_list.append(a_in_10)
+        data_frame_1['ratio'] = ratio_list
+        data_frame_1.insert(8, 'a_in_10', a_in_10_list)
+        # Extract the useful strings of current_annual_rate and rate_rule
+        current_annual_rate_list = []
+        rate_rule_list = []
+        reg = re.compile('\+\d%')
+        for cell in data_frame_1['current_annual_rate']:
+            data = cell.split('<br><font color=#696969>')
+            if len(data) > 1:
+                current_annual_rate = data[0]
+                rate_rule = data[1][:-7]
+                if rate_rule == '固定':
+                    rate_rule = data[0]
+                if rate_rule[:2] == '1年':
+                    rate_rule = rate_rule[2:]
+                    if reg.match(rate_rule):
+                        rate_rule = rate_rule[:-1] + '.0%'
+            else:
+                current_annual_rate = '-'
+                rate_rule = data[0][:2]
+                # The data of fund '163109-150022-150023' i crawl from abcfund is wrong, so i correct it myself.
+                if rate_rule == '6%':
+                    current_annual_rate = '5.75%'
+                    rate_rule = '+3.0%'
+            current_annual_rate_list.append(current_annual_rate)
+            rate_rule_list.append(rate_rule)
+        data_frame_1['current_annual_rate'] = current_annual_rate_list
+        data_frame_1.insert(11, 'rate_rule', rate_rule_list)
+        # Get the one-year deposit rate
+        deposit_name, deposit_rate = ts.get_deposit_rate().loc[6, ['deposit_type', 'rate']]
+        if deposit_name == '定期存款整存整取(一年)':
+            deposit_rate = float(deposit_rate)
+        else:
+            logging.error('Failure in getting deposit rate!')
+            deposit_rate = 1.5
+        # Convert the format of current annual rate from string to number, then calculate the next annual rate, and make
+        # both formats 'string' and 'number' of it
+        data_frame_1.insert(11, 'num_current_annual_rate', [_format_convert(n_str[:-1], 'float')/100
+                                                            for n_str in data_frame_1['current_annual_rate']])
+        data_frame_1.insert(13, 'num_next_annual_rate', [_calculate_next_annual_rate(rate_rule, deposit_rate)
+                                                         for rate_rule in data_frame_1['rate_rule']])
+        data_frame_1.insert(13, 'next_annual_rate', [str(cell * 100) + '%' for cell in
+                                                     data_frame_1['num_next_annual_rate']])
+        # 2. Get the info of rate adjustment
+        url = 'http://www.abcfund.cn/data/arateadjustment.php'
+        text = urllib.request.urlopen(url, timeout=10).read()
+        text = text.decode('GBK')
+        reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
+        data = reg.findall(text)
+        data_list = []
+        for row in data:
+            if len(row) > 1 and row[0] != '-':
+                data_list.append([cell for cell in row.split('</td><td>')])
+        data_frame_2 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'rate_adjustment_condition',
+                                                        'next_rate_adjustment_date'])
+        data_frame_2 = data_frame_2.drop('mother_name', axis=1)
+        data_frame_2 = data_frame_2.set_index('mother_code')
+        data_frame_2['next_rate_adjustment_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d')
+                                                     for cell in data_frame_2['next_rate_adjustment_date']]
+        data_frame_2['days_to_next_rate_adjustment'] = [_calculate_minus_days_of_two_dates(
+            date.date(), self.TODAY_DATE) for date in data_frame_2['next_rate_adjustment_date']]
+        # Classify the rate adjustment condition
+        rate_adjustment_condition_list = []
+        for cell in data_frame_2['rate_adjustment_condition']:
+            if '动态调整' in cell:
+                rate_adjustment_condition = '动态调整'
+            elif '不定期' in cell:
+                rate_adjustment_condition = '不定期调整'
+            elif '不调整' in cell:
+                rate_adjustment_condition = '不调整'
+            else:
+                rate_adjustment_condition = '定期调整'
+            rate_adjustment_condition_list.append(rate_adjustment_condition)
+        data_frame_2['rate_adjustment_condition'] = rate_adjustment_condition_list
+
+        # 3. Get the conversion condition
+        url = 'http://www.abcfund.cn/data/zsinfo.php'
+        text = urllib.request.urlopen(url, timeout=10).read()
+        text = text.decode('GBK')
+        reg = re.compile(r'onclick.*?><td>(.*?)</td><tr')
+        data = reg.findall(text)
+        data_list = []
+        for row in data:
+            if len(row) > 1 and row[0] != '-':
+                data_list.append([cell for cell in row.replace('</td><td>', '<td>').split('<td>')])
+        data_frame_3 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name',
+                                                        'next_regular_conversion_date', 'days from now on',
+                                                        'ascending_conversion_condition',
+                                                        'descending_conversion_condition'])
+        data_frame_3 = data_frame_3.drop(['mother_name', 'days from now on'], axis=1)
+        data_frame_3 = data_frame_3.set_index('mother_code')
+        data_frame_3['next_regular_conversion_date'] = [_format_convert(cell, 'datetime', '%Y年%m月%d日') for
+                                                        cell in data_frame_3['next_regular_conversion_date']]
+        # Extract the values of conversion condition
+        ascending_conversion_condition_list = []
+        for cell in data_frame_3['ascending_conversion_condition']:
+            if cell == '-':
+                ascending_conversion_condition = 0
+            else:
+                ascending_conversion_condition = float(cell[7:])
+            ascending_conversion_condition_list.append(ascending_conversion_condition)
+        data_frame_3['ascending_conversion_condition'] = ascending_conversion_condition_list
+        descending_conversion_condition_list = []
+        for cell in data_frame_3['descending_conversion_condition']:
+            if cell == '-':
+                descending_conversion_condition = 0
+            elif cell[0] == 'B':
+                descending_conversion_condition = float(cell[6:])
+            else:
+                descending_conversion_condition = float(cell[7:]) * (-1)
+            descending_conversion_condition_list.append(descending_conversion_condition)
+        data_frame_3['descending_conversion_condition'] = descending_conversion_condition_list
+
+        # 4. Get the net value of mother fund, a and b
+        url = 'http://www.abcfund.cn/data/premium.php'
+        text = urllib.request.urlopen(url, timeout=10).read()
+        text = text.decode('GBK')
+        reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
+        data = reg.findall(text)
+        data_list = []
+        for row in data:
+            if len(row) > 1 and '-</td>' not in row:
+                data_list.append([cell for cell in row.split('</td><td>')])
+        data_frame_4 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'mother_net_value', 'a_code',
+                                                        'a_name', 'a_net_value', 'a_price', 'a_premium', 'a_volume',
+                                                        'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
+                                                        'b_volume', 'whole_volume'])
+        data_frame_4 = data_frame_4.drop(['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume',
+                                          'b_code', 'b_name', 'b_price', 'b_premium', 'b_volume', 'whole_volume'
+                                          ], axis=1)
+        data_frame_4 = data_frame_4.set_index('mother_code')
+        data_frame_4['mother_net_value'] = data_frame_4['mother_net_value'].map(float)
+        data_frame_4['a_net_value'] = data_frame_4['a_net_value'].map(float)
+        data_frame_4['b_net_value'] = data_frame_4['b_net_value'].map(float)
+
+        # 4. Join the data frames together
+        self.data_frame = data_frame_1.join([data_frame_2, data_frame_3, data_frame_4])
+        self.frame_info = self.data_frame.dropna(how='any', subset=['list_date'])
+
+#        # 5. Save the data into sqlite database
+#        engine = create_engine('sqlite:///fund.db')
+#        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
+#        self.data_frame.to_sql('structured_fund_info', engine, if_exists='replace')
+
+    def init_fund_code(self):
+        self.fund_a_code = list(self.frame_info['a_code'].values)
+        self.fund_b_code = list(self.frame_info['b_code'].values)
+
+    def update_realtime_quotations(self):
+        frame_a = _realtime_quotations(self.fund_a_code)
+        frame_a = self.frame_info.join(frame_a, on='a_code', how='inner')
+        frame_a['a_increase_value'] = frame_a['price'] - frame_a['pre_close']
+        frame_a['a_increase_rate'] = frame_a['a_increase_value'] / frame_a['pre_close']
+        frame_a['premium_rate'] = (frame_a['price'] - frame_a['a_net_value']) / frame_a['a_net_value']
+        frame_a['modified_rate_of_return'] = frame_a['num_next_annual_rate'] / (
+            frame_a['price'] - (frame_a['a_net_value'] - 1) + frame_a['days_to_next_rate_adjustment'] / 365 * (
+                frame_a['num_next_annual_rate'] - frame_a['num_current_annual_rate']))
+        self.frame_a = frame_a
+        engine = create_engine('sqlite:///fund.db')
+        frame_a.to_sql('structured_fund_a', engine, if_exists='replace')
+
+    def format_a(self):
+        self.frame_a = self.frame_a[['a_code', 'a_name', 'price', 'a_increase_rate', 'amount', 'a_net_value',
+                                    'premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
+                                     'modified_rate_of_return']]
+        for column in ['price', 'a_increase_rate', 'amount', 'a_net_value', 'premium_rate', 'rate_rule',
+                       'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']:
+            self.frame_a[column] = self.frame_a[column].map(str)
+        self.frame_a = list(self.frame_a.values)
+
+
+def _format_convert(source_data, target_type, source_format='', decimal=2):
+    if target_type == 'int':
         try:
-            self.a_b1_v = int(value[4])
+            return int(source_data)
         except ValueError:
-            self.a_b1_v = 0
-        self.a_ask = float(value[5])
+            return 0
+    elif target_type == 'float':
         try:
-            self.a_a1_v = int(value[6])
+            return float(source_data)
         except ValueError:
-            self.a_a1_v = 0
-        self.a_high = float(value[7])
-        self.a_low = float(value[8])
-        self.a_pre_close = float(value[9])
-        self.a_today_open = float(value[10])
-        self.a_timestamp = value[11]
-        self.a_increase_value = self.a_price - self.a_pre_close
-        self.a_increase_percentage = self.a_increase_value / self.a_pre_close
-        self.a_premium_rate = (self.a_price - self.a_net_value) / self.a_net_value
-
-    def format_data(self):
-        # The variables are transformed to strings for display
-        code = self.a_code
-        name = self.a_name
-        price = str('{0:.3f}'.format(self.a_price))
-        increase_percentage = str('{0:.2f}'.format(self.a_increase_percentage * 100)) + '%'
-        amount = str('{0:.1f}'.format(self.a_amount / 10000)) + '万'
-        bid = str('{0:.3f}'.format(self.a_bid))
-        b1_v = str(self.a_b1_v)
-        ask = str('{0:.3f}'.format(self.a_ask))
-        a1_v = str(self.a_a1_v)
-        high = str('{0:.3f}'.format(self.a_high))
-        low = str('{0:.3f}'.format(self.a_low))
-        pre_close = str('{0:.3f}'.format(self.a_pre_close))
-        today_open = str('{0:.3f}'.format(self.a_today_open))
-        timestamp = self.a_timestamp
-        premium_rate = str('{0:.2f}'.format(self.a_premium_rate * 100)) + '%'
-        net_value = str('{0:.3f}'.format(self.a_net_value))
-#        annual_yield = str('{0:.3f}'.format(self.annual_yield * 100)) + '%'
-
-        return code, name, price, increase_percentage, net_value, premium_rate, amount, bid, b1_v, ask, a1_v, \
-            high, low, pre_close, today_open
+            return 0.0
+    elif target_type == 'datetime':
+        try:
+            return datetime.datetime.strptime(source_data, source_format)
+        except ValueError:
+            return None
+    elif target_type == 'percent':
+        if source_data > 0:
+            return str(round(source_data / 100, decimal)) + '%'
+        else:
+            return '-'
 
 
-def format_code_list(symbols):
-    # convert code to list, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
+def _calculate_minus_days_of_two_dates(first_date, second_date):
+    try:
+        return (first_date - second_date).days
+    except TypeError:
+        return -1
+
+
+def _calculate_next_annual_rate(rate_rule, deposit_rate):
+    if '+' in rate_rule:
+        return deposit_rate / 100 + float(rate_rule[1:-1]) / 100
+    elif rate_rule == '特殊':
+        return 0
+    else:
+        return float(rate_rule[:-1]) / 100
+
+
+def _realtime_quotations(symbols):
+    # Get the list split by 30 codes, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
     if isinstance(symbols, str):
         code_list = [[symbols]]
-        return code_list
     else:
         code_list = []
         i = 0
         while i < len(symbols):
             code_list.append(symbols[i:i+30])
             i += 30
-        return code_list
-
-
-def realtime_quotations(code_list):
-    # Get realtime quotations, and put them in the list, in the format of [(code1, values), (code2, values2) ... ]
-    table = ts.get_realtime_quotes(code_list)[['code', 'name', 'price', 'volume', 'amount', 'bid', 'b1_v',
-                                               'ask', 'a1_v', 'high', 'low', 'pre_close', 'open', 'time']]
-    return table.values
-
-
-def init_fund_info():
-    conn = sqlite3.connect('../data/fund.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM structured_fund_info WHERE list_date IS NOT NULL')
-    table = cursor.fetchall()
-    for row in table:
-        structure_fund_mother[row[0]] = StructuredFund(row)
-        structure_fund_a[row[4]] = structure_fund_mother[row[0]]
-        structure_fund_b[row[6]] = structure_fund_mother[row[0]]
-    cursor.close()
-    conn.close()
-
-
-def update_realtime_quotations():
-    conn = sqlite3.connect('../data/fund.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM structured_fund_a ORDER BY code')
-    table = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    structured_fund_window.signal_fill_table.emit(table)
-    structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
-       time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
-
+    # Get realtime quotations, in the format of data frame.
+    data_frame = pd.DataFrame()
+    for code_list_split_30 in code_list:
+        table = ts.get_realtime_quotes(code_list_split_30).loc[
+            :, ['code', 'name', 'price', 'volume', 'amount', 'b1_p', 'b1_v', 'b2_p', 'b2_v', 'b3_p',
+                'b3_v', 'b4_p', 'b4_v', 'b5_p', 'b5_v', 'a1_p', 'a1_v', 'a2_p', 'a2_v', 'a3_p', 'a3_v',
+                'a4_p', 'a4_v', 'a5_p', 'a5_v', 'high', 'low', 'pre_close', 'open', 'date', 'time']]
+        table = table.set_index('code')
+        data_frame = pd.concat([data_frame, table])
+    for column in ['volume', 'b1_v', 'b2_v', 'b3_v', 'b4_v', 'b5_v', 'a1_v', 'a2_v', 'a3_v', 'a4_v',
+                   'a5_v']:
+        data_frame[column] = [_format_convert(cell, 'int') for cell in data_frame[column]]
+    for column in ['price', 'amount', 'b1_p', 'b2_p', 'b3_p', 'b4_p', 'b5_p', 'a1_p', 'a2_p', 'a3_p',
+                   'a4_p', 'a5_p', 'high', 'low', 'pre_close', 'open']:
+        data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
+    return data_frame
 
 
 if __name__ == '__main__':
-    init_fund_info()
-#    update_realtime_quotations()
-#    print(structure_fund_a['150152'].a_net_value)
-
-    app = QtWidgets.QApplication(sys.argv)
-    structured_fund_window = window.MyWindow()
-#    structured_fund_window.fill_the_table(structure_fund_a.keys(), structure_fund_a)
-    structured_fund_window.show()
-    structured_fund_window.timer = QtCore.QTimer()
-    structured_fund_window.timer.timeout.connect(update_realtime_quotations)
-    structured_fund_window.timer.start(1000)
-    sys.exit(app.exec_())
+    structured_fund = StructuredFund()
+    structured_fund.init_fund_info()
+    structured_fund.init_fund_code()
+    structured_fund.update_realtime_quotations()
