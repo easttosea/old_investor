@@ -54,5 +54,5 @@ if __name__ == '__main__':
     structured_fund_window.show()
     structured_fund_window.timer = QtCore.QTimer()
     structured_fund_window.timer.timeout.connect(update_realtime_quotations)
-    structured_fund_window.timer.start(1000)
+    structured_fund_window.timer.start(3000)
     sys.exit(app.exec_())

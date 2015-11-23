@@ -205,25 +205,37 @@ class StructuredFund(object):
         self.fund_b_code = list(self.frame_info['b_code'].values)
 
     def update_realtime_quotations(self):
-        frame_realtime = _realtime_quotations(self.fund_a_code)
-        frame_realtime = self.frame_info.join(frame_realtime, on='a_code', how='inner')
-        frame_realtime['a_increase_value'] = frame_realtime['price'] - frame_realtime['pre_close']
-        frame_realtime['a_increase_rate'] = frame_realtime['a_increase_value'] / frame_realtime['pre_close']
-        frame_realtime['premium_rate'] = (frame_realtime['price'] - frame_realtime['a_net_value']) / frame_realtime['a_net_value']
-        frame_realtime['modified_rate_of_return'] = frame_realtime['next_annual_rate'] / (
-            frame_realtime['price'] - (frame_realtime['a_net_value'] - 1) + frame_realtime['days_to_next_rate_adjustment'] / 365 * (
-                frame_realtime['next_annual_rate'] - frame_realtime['current_annual_rate']))
-        self.frame_realtime = frame_realtime
+        self.frame_realtime = _realtime_quotations(self.fund_a_code)
+        self.frame_realtime.columns = [
+            'a_name', 'a_price', 'a_volume', 'a_amount', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p',
+            'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v',
+            'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close',
+            'a_open', 'a_date', 'a_time']
+        self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
+        self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
+        self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
+            'a_pre_close']
+        self.frame_realtime['a_increase_rate'] = self.frame_realtime['a_increase_value'] / self.frame_realtime[
+            'a_pre_close']
+        self.frame_realtime['a_premium_rate'] = (self.frame_realtime['a_price'] - self.frame_realtime[
+            'a_net_value']) / self.frame_realtime['a_net_value']
+        self.frame_realtime['modified_rate_of_return'] = self.frame_realtime['next_annual_rate'] / (
+            self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
+            self.frame_realtime['days_to_next_rate_adjustment'] / 365 *
+            (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
         engine = create_engine('sqlite:///fund.db')
-        frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
+        self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
 
     def output_a(self):
-        frame_output = self.frame_realtime[['a_code', 'a_name', 'price', 'a_increase_rate', 'amount', 'a_net_value',
-                                    'premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
-                                     'modified_rate_of_return']]
-        for column in ['price', 'a_increase_rate', 'amount', 'a_net_value', 'premium_rate', 'rate_rule',
-                       'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']:
+        frame_output = self.frame_realtime[[
+            'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount', 'a_net_value', 'a_premium_rate',
+            'rate_rule', 'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']]
+        for column in ['a_price', 'a_amount', 'a_net_value', 'rate_rule']:
             frame_output[column] = frame_output[column].map(str)
+        for column in ['a_increase_rate', 'a_premium_rate', 'current_annual_rate', 'next_annual_rate']:
+            frame_output[column] = [_format_convert(cell, 'str_percent', decimal=2) for cell in frame_output[column]]
+        for column in ['modified_rate_of_return']:
+            frame_output[column] = [_format_convert(cell, 'str_percent', decimal=3) for cell in frame_output[column]]
         return list(frame_output.values)
 
 
@@ -250,7 +262,8 @@ def _format_convert(source_data, target_type, source_format='', decimal=2):
             return 0.0
     elif target_type == 'str_percent':
         if source_data > 0:
-            return str(round(source_data * 100, decimal)) + '%'
+            str_format = '%.' + str(decimal) + 'f'
+            return str_format % (source_data * 100) + '%'
         else:
             return '-'
 
