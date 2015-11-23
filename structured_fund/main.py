@@ -39,8 +39,7 @@ class StructuredFund(object):
 
 def update_realtime_quotations():
     structured_fund.update_realtime_quotations()
-    structured_fund.format_a()
-    structured_fund_window.signal_fill_table.emit(structured_fund.frame_a)
+    structured_fund_window.signal_fill_table.emit(structured_fund.output_a())
     structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
        time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
 
@@ -49,8 +48,6 @@ if __name__ == '__main__':
     structured_fund = data.StructuredFund()
     structured_fund.init_fund_info()
     structured_fund.init_fund_code()
-    structured_fund.update_realtime_quotations()
-    structured_fund.format_a()
 
     app = QtWidgets.QApplication(sys.argv)
     structured_fund_window = window.MyWindow()
