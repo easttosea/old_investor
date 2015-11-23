@@ -28,11 +28,10 @@ class StructuredFund(object):
         for row in data:
             if len(row) > 1:
                 data_list.append([cell for cell in row.split('</td><td>')])
-        frame_info_1 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'establish_date', 'list_date',
-                                                        'a_code', 'a_name', 'b_code', 'b_name', 'ratio',
-                                                        'delist_date', 'current_annual_rate', 'index_code',
-                                                        'index_name'])
-        frame_info_1 = frame_info_1[frame_info_1['a_code'].str.contains('15')]
+        frame_info_1 = pd.DataFrame(data_list, columns=[
+            'mother_code', 'mother_name', 'establish_date', 'list_date', 'a_code', 'a_name', 'b_code',
+            'b_name', 'ratio', 'delist_date', 'current_annual_rate', 'index_code', 'index_name'])
+        frame_info_1 = frame_info_1[frame_info_1['a_code'].str.contains(r'15|50')]
         frame_info_1 = frame_info_1.set_index('mother_code')
         frame_info_1['establish_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
                                           frame_info_1['establish_date']]
@@ -62,7 +61,7 @@ class StructuredFund(object):
                 rate_rule = data[1][:-7]
                 if rate_rule == '固定':
                     rate_rule = '固定' + data[0]
-                elif '.' not in rate_rule:
+                if '.' not in rate_rule:
                     rate_rule = rate_rule[:-1] + '.0%'
             else:
                 current_annual_rate = 0
@@ -72,7 +71,7 @@ class StructuredFund(object):
         frame_info_1['current_annual_rate'] = current_annual_rate_list
         frame_info_1['rate_rule'] = rate_rule_list
         manual_change = [('163109', 0.0575, '1年+3.0%'), ('161719', 0.055, '3年+1.25%'),
-                         ('162215', 0.0358, '国债*1.3')]
+                         ('162215', 0.0358, '国债×1.3')]
         for code, current_annual_rate, rate_rule in manual_change:
             if code in frame_info_1.index:
                 frame_info_1.loc[code, ['current_annual_rate', 'rate_rule']] = (current_annual_rate, rate_rule)
@@ -109,21 +108,21 @@ class StructuredFund(object):
         for row in data:
             if len(row) > 1:
                 data_list.append([cell for cell in row.split('</td><td>')])
-        frame_info_2 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'rate_adjustment_condition',
-                                                        'next_rate_adjustment_date'])
+        frame_info_2 = pd.DataFrame(data_list, columns=[
+            'mother_code', 'mother_name', 'rate_adjustment_condition', 'next_rate_adjustment_date'])
         frame_info_2 = frame_info_2.drop('mother_name', axis=1)
         frame_info_2 = frame_info_2.set_index('mother_code')
-        frame_info_2['next_rate_adjustment_date'] = [_format_convert(cell, 'datetime', '%Y-%m-%d')
-                                                     for cell in frame_info_2['next_rate_adjustment_date']]
-        frame_info_2['days_to_next_rate_adjustment'] = [_calculate_minus_days_of_two_dates(
-            date.date(), self.TODAY_DATE) for date in frame_info_2['next_rate_adjustment_date']]
+        frame_info_2['next_rate_adjustment_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
+                                                     frame_info_2['next_rate_adjustment_date']]
+        frame_info_2['days_to_next_rate_adjustment'] = [_minus_days_of_two_dates(date, self.TODAY_DATE) for date
+                                                        in frame_info_2['next_rate_adjustment_date']]
         # Classify the rate adjustment condition
         rate_adjustment_condition_list = []
         for cell in frame_info_2['rate_adjustment_condition']:
             if '动态调整' in cell:
                 rate_adjustment_condition = '动态调整'
             elif '不定期' in cell:
-                rate_adjustment_condition = '不定期调整'
+                rate_adjustment_condition = '折算调整'
             elif '不调整' in cell:
                 rate_adjustment_condition = '不调整'
             else:
@@ -139,21 +138,22 @@ class StructuredFund(object):
         data = reg.findall(text)
         data_list = []
         for row in data:
-            if len(row) > 1 and row[0] != '-':
+            if len(row) > 1:
                 data_list.append([cell for cell in row.replace('</td><td>', '<td>').split('<td>')])
-        frame_info_3 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name',
-                                                        'next_regular_conversion_date', 'days from now on',
-                                                        'ascending_conversion_condition',
-                                                        'descending_conversion_condition'])
+        frame_info_3 = pd.DataFrame(data_list, columns=[
+            'mother_code', 'mother_name', 'next_regular_conversion_date', 'days from now on',
+            'ascending_conversion_condition', 'descending_conversion_condition'])
         frame_info_3 = frame_info_3.drop(['mother_name', 'days from now on'], axis=1)
         frame_info_3 = frame_info_3.set_index('mother_code')
-        frame_info_3['next_regular_conversion_date'] = [_format_convert(cell, 'datetime', '%Y年%m月%d日') for
-                                                        cell in frame_info_3['next_regular_conversion_date']]
+        frame_info_3['next_regular_conversion_date'] = [_format_convert(cell, 'date', '%Y年%m月%d日') for cell
+                                                        in frame_info_3['next_regular_conversion_date']]
         # Extract the values of conversion condition
         ascending_conversion_condition_list = []
         for cell in frame_info_3['ascending_conversion_condition']:
             if cell == '-':
                 ascending_conversion_condition = 0
+            elif cell[0] == 'B':
+                ascending_conversion_condition = float(cell[6:]) * (-1)
             else:
                 ascending_conversion_condition = float(cell[7:])
             ascending_conversion_condition_list.append(ascending_conversion_condition)
@@ -177,28 +177,28 @@ class StructuredFund(object):
         data = reg.findall(text)
         data_list = []
         for row in data:
-            if len(row) > 1 and '-</td>' not in row:
+            if len(row) > 1:
                 data_list.append([cell for cell in row.split('</td><td>')])
-        frame_info_4 = pd.DataFrame(data_list, columns=['mother_code', 'mother_name', 'mother_net_value', 'a_code',
-                                                        'a_name', 'a_net_value', 'a_price', 'a_premium', 'a_volume',
-                                                        'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
-                                                        'b_volume', 'whole_volume'])
-        frame_info_4 = frame_info_4.drop(['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume',
-                                          'b_code', 'b_name', 'b_price', 'b_premium', 'b_volume', 'whole_volume'
-                                          ], axis=1)
+        frame_info_4 = pd.DataFrame(data_list, columns=[
+            'mother_code', 'mother_name', 'mother_net_value', 'a_code', 'a_name', 'a_net_value',
+            'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
+            'b_volume', 'whole_volume'])
+        frame_info_4 = frame_info_4.drop(
+            ['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name',
+             'b_price', 'b_premium', 'b_volume', 'whole_volume'], axis=1)
         frame_info_4 = frame_info_4.set_index('mother_code')
-        frame_info_4['mother_net_value'] = frame_info_4['mother_net_value'].map(float)
-        frame_info_4['a_net_value'] = frame_info_4['a_net_value'].map(float)
-        frame_info_4['b_net_value'] = frame_info_4['b_net_value'].map(float)
+        frame_info_4['mother_net_value'] = [_format_convert(cell, 'float') for cell in
+                                            frame_info_4['mother_net_value']]
+        frame_info_4['a_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['a_net_value']]
+        frame_info_4['b_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['b_net_value']]
 
         # 4. Join the data frames together
-        self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4])
+        self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4], how='inner')
         self.frame_info = self.frame_info.dropna(how='any', subset=['list_date'])
 
-#        # 5. Save the data into sqlite database
-#        engine = create_engine('sqlite:///fund.db')
-#        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
-#        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
+        # 5. Save the data into sqlite database
+        engine = create_engine('sqlite:///fund.db')
+        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
 
     def init_fund_code(self):
         self.fund_a_code = list(self.frame_info['a_code'].values)
@@ -210,9 +210,9 @@ class StructuredFund(object):
         frame_realtime['a_increase_value'] = frame_realtime['price'] - frame_realtime['pre_close']
         frame_realtime['a_increase_rate'] = frame_realtime['a_increase_value'] / frame_realtime['pre_close']
         frame_realtime['premium_rate'] = (frame_realtime['price'] - frame_realtime['a_net_value']) / frame_realtime['a_net_value']
-        frame_realtime['modified_rate_of_return'] = frame_realtime['num_next_annual_rate'] / (
+        frame_realtime['modified_rate_of_return'] = frame_realtime['next_annual_rate'] / (
             frame_realtime['price'] - (frame_realtime['a_net_value'] - 1) + frame_realtime['days_to_next_rate_adjustment'] / 365 * (
-                frame_realtime['num_next_annual_rate'] - frame_realtime['num_current_annual_rate']))
+                frame_realtime['next_annual_rate'] - frame_realtime['current_annual_rate']))
         self.frame_realtime = frame_realtime
         engine = create_engine('sqlite:///fund.db')
         frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
@@ -255,15 +255,11 @@ def _format_convert(source_data, target_type, source_format='', decimal=2):
             return '-'
 
 
-
-def _calculate_minus_days_of_two_dates(first_date, second_date):
+def _minus_days_of_two_dates(first_date, second_date):
     try:
         return (first_date - second_date).days
     except TypeError:
         return -1
-
-
-
 
 
 def _realtime_quotations(symbols):
