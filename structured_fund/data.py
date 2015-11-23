@@ -227,7 +227,7 @@ class StructuredFund(object):
         self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
 
     def output_a(self):
-        frame_output = self.frame_realtime[[
+        frame_output = self.frame_realtime.loc[:,[
             'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount', 'a_net_value', 'a_premium_rate',
             'rate_rule', 'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']]
         for column in ['a_price', 'a_amount', 'a_net_value', 'rate_rule']:
@@ -308,3 +308,4 @@ if __name__ == '__main__':
     structured_fund.init_fund_info()
     structured_fund.init_fund_code()
     structured_fund.update_realtime_quotations()
+    print(structured_fund.output_a())
