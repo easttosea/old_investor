@@ -13,6 +13,7 @@ class StructuredFund(object):
     def __init__(self):
         self.fund_a_code = []
         self.fund_b_code = []
+        self.net_value_0 = []
         self.frame_info = None
         self.frame_realtime = None
         self.update_time = ''
@@ -197,7 +198,10 @@ class StructuredFund(object):
         self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4], how='inner')
         self.frame_info = self.frame_info.dropna(how='any', subset=['list_date'])
 
-        # 5. Save the data into sqlite database
+        # 5. Get the list of data whose 'a net value' is 0
+        self.net_value_0 = list(self.frame_info[self.frame_info.a_net_value == 0].index)
+
+        # 6. Save the data into sqlite database
         engine = create_engine('sqlite:///fund.db')
         self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
 
@@ -237,12 +241,19 @@ class StructuredFund(object):
         frame_output = self.frame_realtime.loc[:,[
             'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount', 'a_net_value', 'a_premium_rate',
             'rate_rule', 'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']]
-        for column in ['a_price', 'a_amount', 'a_net_value', 'rate_rule']:
-            frame_output[column] = frame_output[column].map(str)
-        for column in ['a_increase_rate', 'a_premium_rate', 'current_annual_rate', 'next_annual_rate']:
-            frame_output[column] = [_format_convert(cell, 'str_percent', decimal=2) for cell in frame_output[column]]
-        for column in ['modified_rate_of_return']:
-            frame_output[column] = [_format_convert(cell, 'str_percent', decimal=3) for cell in frame_output[column]]
+        frame_output['a_price'] = frame_output['a_price'].map(lambda x: '%.3f' % x)
+        frame_output['a_increase_rate'] = frame_output['a_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
+        frame_output['a_amount'] = frame_output['a_amount'].map(lambda x: '%.1f万' % (x/10000))
+        frame_output['a_net_value'] = frame_output['a_net_value'].map(lambda x: '%.3f' % x)
+        frame_output['a_premium_rate'] = frame_output['a_premium_rate'].map(lambda x: '%.2f%%' % (x*100))
+        frame_output['current_annual_rate'] = frame_output['current_annual_rate'].map(
+            lambda x: '%.2f%%' % (x*100))
+        frame_output['next_annual_rate'] = frame_output['next_annual_rate'].map(lambda x: '%.2f%%' % (x*100))
+        frame_output['modified_rate_of_return'] = frame_output['modified_rate_of_return'].map(
+            lambda x: '%.3f%%' % (x*100))
+        for index in self.net_value_0:
+            frame_output.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
+        frame_output = frame_output.sort(columns='modified_rate_of_return', ascending=False)
         return list(frame_output.values)
 
 

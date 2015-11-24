@@ -64,13 +64,12 @@ def window_show(queue):
     structured_fund_window.show()
     structured_fund_window.timer = QtCore.QTimer()
     structured_fund_window.timer.timeout.connect(lambda: emit_data(structured_fund_window, queue))
-    structured_fund_window.timer.start(1000)
+    structured_fund_window.timer.start(100)
     sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
     q = Queue()
-    print('Parent process %s.' % os.getpid())
     process_data = Process(target=update_realtime_quotations, args=(q,))
     process_window = Process(target=window_show, args=(q,))
     process_data.start()
