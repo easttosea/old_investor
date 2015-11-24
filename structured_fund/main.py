@@ -51,10 +51,11 @@ def update_realtime_quotations(queue):
 
 
 def emit_data(structured_fund_window, queue):
-    data_table = queue.get(True)
-    structured_fund_window.signal_fill_table.emit(data_table)
-    structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
-       time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
+    if queue.empty() is False:
+        data_table = queue.get(True)
+        structured_fund_window.signal_fill_table.emit(data_table)
+        structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
+           time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
 
 
 def window_show(queue):
@@ -63,7 +64,7 @@ def window_show(queue):
     structured_fund_window.show()
     structured_fund_window.timer = QtCore.QTimer()
     structured_fund_window.timer.timeout.connect(lambda: emit_data(structured_fund_window, queue))
-    structured_fund_window.timer.start(3000)
+    structured_fund_window.timer.start(1000)
     sys.exit(app.exec_())
 
 
@@ -76,11 +77,4 @@ if __name__ == '__main__':
     process_window.start()
     process_data.join()
     process_data.terminate()
-#    structured_fund_window.timer = QtCore.QTimer()
-#    structured_fund_window.timer.timeout.connect(emit_data)
-#    structured_fund_window.timer.start(3000)
-
-##    while True:
-  #      structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}'.format(
-   #         time.strftime('%H:%M:%S', time.localtime())))
 
