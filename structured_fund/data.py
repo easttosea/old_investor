@@ -15,6 +15,7 @@ class StructuredFund(object):
         self.fund_b_code = []
         self.frame_info = None
         self.frame_realtime = None
+        self.update_time = ''
         self.TODAY_DATE = datetime.date.today()
 
     def init_fund_info(self):
@@ -205,26 +206,32 @@ class StructuredFund(object):
         self.fund_b_code = list(self.frame_info['b_code'].values)
 
     def update_realtime_quotations(self):
-        self.frame_realtime = _realtime_quotations(self.fund_a_code)
-        self.frame_realtime.columns = [
-            'a_name', 'a_price', 'a_volume', 'a_amount', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p',
-            'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v',
-            'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close',
-            'a_open', 'a_date', 'a_time']
-        self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
-        self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
-        self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
-            'a_pre_close']
-        self.frame_realtime['a_increase_rate'] = self.frame_realtime['a_increase_value'] / self.frame_realtime[
-            'a_pre_close']
-        self.frame_realtime['a_premium_rate'] = (self.frame_realtime['a_price'] - self.frame_realtime[
-            'a_net_value']) / self.frame_realtime['a_net_value']
-        self.frame_realtime['modified_rate_of_return'] = self.frame_realtime['next_annual_rate'] / (
-            self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
-            self.frame_realtime['days_to_next_rate_adjustment'] / 365 *
-            (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
-        engine = create_engine('sqlite:///fund.db')
-        self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
+        frame_realtime, update_time = _realtime_quotations(self.fund_a_code)
+        if self.update_time != update_time:
+            self.update_time = update_time
+            self.frame_realtime = frame_realtime
+            self.frame_realtime.columns = [
+                'a_name', 'a_price', 'a_volume', 'a_amount', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v',
+                'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p',
+                'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
+                'a_pre_close', 'a_open', 'a_date', 'a_time']
+            self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
+            self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
+            self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
+                'a_pre_close']
+            self.frame_realtime['a_increase_rate'] = self.frame_realtime[
+                                                         'a_increase_value'] / self.frame_realtime['a_pre_close']
+            self.frame_realtime['a_premium_rate'] = (self.frame_realtime['a_price'] - self.frame_realtime[
+                'a_net_value']) / self.frame_realtime['a_net_value']
+            self.frame_realtime['modified_rate_of_return'] = self.frame_realtime['next_annual_rate'] / (
+                self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
+                self.frame_realtime['days_to_next_rate_adjustment'] / 365 *
+                (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
+            engine = create_engine('sqlite:///fund.db')
+            self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
+            return True
+        else:
+            return False
 
     def output_a(self):
         frame_output = self.frame_realtime.loc[:,[
@@ -261,7 +268,7 @@ def _format_convert(source_data, target_type, source_format='', decimal=2):
         except ValueError:
             return 0.0
     elif target_type == 'str_percent':
-        if source_data > 0:
+        if source_data != 0:
             str_format = '%.' + str(decimal) + 'f'
             return str_format % (source_data * 100) + '%'
         else:
@@ -300,7 +307,8 @@ def _realtime_quotations(symbols):
     for column in ['price', 'amount', 'b1_p', 'b2_p', 'b3_p', 'b4_p', 'b5_p', 'a1_p', 'a2_p', 'a3_p',
                    'a4_p', 'a5_p', 'high', 'low', 'pre_close', 'open']:
         data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
-    return data_frame
+    update_time = data_frame.iat[0, -1]
+    return data_frame, update_time
 
 
 if __name__ == '__main__':

@@ -1,9 +1,11 @@
 import sys
+import os
 import time
 import sqlite3
 import tushare as ts
 from structured_fund import data, window
 from PyQt5 import QtWidgets, QtCore
+from multiprocessing import Process, Queue
 
 
 structure_fund_mother = {}
@@ -37,22 +39,48 @@ class StructuredFund(object):
             high, low, pre_close, today_open
 
 
-def update_realtime_quotations():
-    structured_fund.update_realtime_quotations()
-    structured_fund_window.signal_fill_table.emit(structured_fund.output_a())
+def update_realtime_quotations(queue):
+    structured_fund = data.StructuredFund()
+    structured_fund.init_fund_info()
+    structured_fund.init_fund_code()
+    while True:
+        new_date = structured_fund.update_realtime_quotations()
+        if new_date:
+            queue.put(structured_fund.output_a())
+        time.sleep(1)
+
+
+def emit_data(structured_fund_window, queue):
+    data_table = queue.get(True)
+    structured_fund_window.signal_fill_table.emit(data_table)
     structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}，数据时间：1'.format(
        time.strftime('%H:%M:%S', time.localtime()) ))#timestamp))
 
 
-if __name__ == '__main__':
-    structured_fund = data.StructuredFund()
-    structured_fund.init_fund_info()
-    structured_fund.init_fund_code()
-
+def window_show(queue):
     app = QtWidgets.QApplication(sys.argv)
     structured_fund_window = window.MyWindow()
     structured_fund_window.show()
     structured_fund_window.timer = QtCore.QTimer()
-    structured_fund_window.timer.timeout.connect(update_realtime_quotations)
+    structured_fund_window.timer.timeout.connect(lambda: emit_data(structured_fund_window, queue))
     structured_fund_window.timer.start(3000)
     sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    q = Queue()
+    print('Parent process %s.' % os.getpid())
+    process_data = Process(target=update_realtime_quotations, args=(q,))
+    process_window = Process(target=window_show, args=(q,))
+    process_data.start()
+    process_window.start()
+    process_data.join()
+    process_data.terminate()
+#    structured_fund_window.timer = QtCore.QTimer()
+#    structured_fund_window.timer.timeout.connect(emit_data)
+#    structured_fund_window.timer.start(3000)
+
+##    while True:
+  #      structured_fund_window.signal_statusbar_showmessage.emit('数据更新正常，当前时间：{0}'.format(
+   #         time.strftime('%H:%M:%S', time.localtime())))
+
