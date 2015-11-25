@@ -14,6 +14,7 @@ class StructuredFund(object):
         self.fund_a_code = []
         self.fund_b_code = []
         self.net_value_0 = []
+        self.a_volume_0 = []
         self.frame_info = None
         self.frame_realtime = None
         self.update_time = ''
@@ -221,6 +222,9 @@ class StructuredFund(object):
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
             self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
             self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
+            self.a_volume_0 = list(self.frame_realtime[self.frame_realtime.a_volume == 0].index)
+            for index in self.a_volume_0:
+                self.frame_realtime.at[index, ['a_price']] = self.frame_realtime.at[index, ['a_pre_close']]
             self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
                 'a_pre_close']
             self.frame_realtime['a_increase_rate'] = self.frame_realtime[
@@ -253,7 +257,7 @@ class StructuredFund(object):
             lambda x: '%.3f%%' % (x*100))
         for index in self.net_value_0:
             frame_output.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
-        frame_output = frame_output.sort(columns='modified_rate_of_return', ascending=False)
+        frame_output = frame_output.sort_values(by='modified_rate_of_return', ascending=False)
         return list(frame_output.values)
 
 
