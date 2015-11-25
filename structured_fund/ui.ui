@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>Form_structured_fund</class>
- <widget class="QWidget" name="Form_structured_fund">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -13,7 +13,7 @@
   <property name="windowTitle">
    <string>分级基金</string>
   </property>
-  <widget class="QTableWidget" name="tableWidget_structured_fund">
+  <widget class="QTableWidget" name="tableWidget_list">
    <property name="geometry">
     <rect>
      <x>50</x>
@@ -27,14 +27,26 @@
      <pointsize>10</pointsize>
     </font>
    </property>
+   <property name="editTriggers">
+    <set>QAbstractItemView::NoEditTriggers</set>
+   </property>
    <property name="alternatingRowColors">
     <bool>true</bool>
+   </property>
+   <property name="selectionMode">
+    <enum>QAbstractItemView::SingleSelection</enum>
    </property>
    <property name="selectionBehavior">
     <enum>QAbstractItemView::SelectRows</enum>
    </property>
-   <property name="sortingEnabled">
+   <property name="verticalScrollMode">
+    <enum>QAbstractItemView::ScrollPerItem</enum>
+   </property>
+   <property name="showGrid">
     <bool>true</bool>
+   </property>
+   <property name="sortingEnabled">
+    <bool>false</bool>
    </property>
    <property name="rowCount">
     <number>150</number>
@@ -43,7 +55,7 @@
     <number>15</number>
    </property>
    <attribute name="horizontalHeaderDefaultSectionSize">
-    <number>50</number>
+    <number>80</number>
    </attribute>
    <row/>
    <row/>

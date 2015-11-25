@@ -220,11 +220,11 @@ class StructuredFund(object):
                 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p',
                 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
-            self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
-            self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
             self.a_volume_0 = list(self.frame_realtime[self.frame_realtime.a_volume == 0].index)
             for index in self.a_volume_0:
-                self.frame_realtime.at[index, ['a_price']] = self.frame_realtime.at[index, ['a_pre_close']]
+                self.frame_realtime.at[index, 'a_price'] = self.frame_realtime.at[index, 'a_pre_close']
+            self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
+            self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
             self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
                 'a_pre_close']
             self.frame_realtime['a_increase_rate'] = self.frame_realtime[
@@ -242,9 +242,10 @@ class StructuredFund(object):
             return False
 
     def output_a(self):
-        frame_output = self.frame_realtime.loc[:,[
-            'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount', 'a_net_value', 'a_premium_rate',
-            'rate_rule', 'current_annual_rate', 'next_annual_rate', 'modified_rate_of_return']]
+        frame_output = self.frame_realtime.loc[:, [
+            'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_increase_value', 'a_amount',
+            'a_net_value', 'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
+            'modified_rate_of_return']]
         frame_output['a_price'] = frame_output['a_price'].map(lambda x: '%.3f' % x)
         frame_output['a_increase_rate'] = frame_output['a_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
         frame_output['a_amount'] = frame_output['a_amount'].map(lambda x: '%.1f万' % (x/10000))
