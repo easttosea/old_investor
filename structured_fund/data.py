@@ -42,6 +42,8 @@ class StructuredFund(object):
                                      frame_info_1['list_date']]
         frame_info_1['delist_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
                                        frame_info_1['delist_date']]
+        frame_info_1['years_to_delist_date'] = [_minus_days_of_two_dates(date, self.TODAY_DATE) / 365 for date
+                                                in frame_info_1['delist_date']]
         # Extract the useful strings of ratio, and get the ratio of a in 10
         ratio_list = []
         a_in_10_list = []
@@ -283,12 +285,6 @@ def _format_convert(source_data, target_type, source_format='', decimal=2):
             return float(source_data[:-1]) / 100
         except ValueError:
             return 0.0
-    elif target_type == 'str_percent':
-        if source_data != 0:
-            str_format = '%.' + str(decimal) + 'f'
-            return str_format % (source_data * 100) + '%'
-        else:
-            return '-'
 
 
 def _minus_days_of_two_dates(first_date, second_date):

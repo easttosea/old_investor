@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from structured_fund.ui import Ui_Form
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtGui import QColor
+from PyQt5 import QtGui
 
 
 class MyWindow(QtWidgets.QMainWindow, Ui_Form):
@@ -17,6 +17,10 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
         self.statusBar().showMessage('准备开始')
         self.signal_fill_table.connect(self.fill_the_table)
         self.signal_statusbar_showmessage.connect(self.statusBar().showMessage)
+        self.COLOR_RED = QtGui.QColor(255, 92, 92)
+        self.COLOR_GREEN = QtGui.QColor(57, 227, 101)
+        self.COLOR_LIGHT_YELLOW = QtGui.QColor(255, 255, 220)
+        self.COLOR_LIGHT_CYAN = QtGui.QColor(220, 255, 255)
 
     def fill_the_table(self, fund_a, a_volume_0):
         row = 0
@@ -33,35 +37,33 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             current_annual_rate = QtWidgets.QTableWidgetItem(fund[9])
             next_annual_rate = QtWidgets.QTableWidgetItem(fund[10])
             modified_rate_of_return = QtWidgets.QTableWidgetItem(fund[11])
+            cell_list = [a_code, a_name, a_price, a_increase_rate, a_amount, a_net_value, a_premium_rate, rate_rule,
+                         current_annual_rate, next_annual_rate, modified_rate_of_return]
+            if rate_rule == '1年+3.0%':
+                background = self.COLOR_LIGHT_YELLOW
+            elif rate_rule == '1年+4.0%':
+                background = self.COLOR_LIGHT_CYAN
+            else:
+                background = QtCore.Qt.white
+
             if a_increase_value > 0:
-                a_price.setForeground(QtCore.Qt.red)
-                a_increase_rate.setForeground(QtCore.Qt.red)
+                a_price.setForeground(self.COLOR_RED)
+                a_increase_rate.setForeground(self.COLOR_RED)
             elif a_increase_value < 0:
-                a_price.setForeground(QtCore.Qt.darkGreen)
-                a_increase_rate.setForeground(QtCore.Qt.darkGreen)
+                a_price.setForeground(self.COLOR_GREEN)
+                a_increase_rate.setForeground(self.COLOR_GREEN)
+
             if fund[0] in a_volume_0:
-                a_code.setForeground(QtCore.Qt.gray)
-                a_name.setForeground(QtCore.Qt.gray)
-                a_price.setForeground(QtCore.Qt.gray)
-                a_increase_rate.setForeground(QtCore.Qt.gray)
-                a_amount.setForeground(QtCore.Qt.gray)
-                a_net_value.setForeground(QtCore.Qt.gray)
-                a_premium_rate.setForeground(QtCore.Qt.gray)
-                rate_rule.setForeground(QtCore.Qt.gray)
-                current_annual_rate.setForeground(QtCore.Qt.gray)
-                next_annual_rate.setForeground(QtCore.Qt.gray)
-                modified_rate_of_return.setForeground(QtCore.Qt.gray)
-            self.tableWidget_list.setItem(row, 0, a_code)
-            self.tableWidget_list.setItem(row, 1, a_name)
-            self.tableWidget_list.setItem(row, 2, a_price)
-            self.tableWidget_list.setItem(row, 3, a_increase_rate)
-            self.tableWidget_list.setItem(row, 4, a_amount)
-            self.tableWidget_list.setItem(row, 5, a_net_value)
-            self.tableWidget_list.setItem(row, 6, a_premium_rate)
-            self.tableWidget_list.setItem(row, 7, rate_rule)
-            self.tableWidget_list.setItem(row, 8, current_annual_rate)
-            self.tableWidget_list.setItem(row, 9, next_annual_rate)
-            self.tableWidget_list.setItem(row, 10, modified_rate_of_return)
+                for cell in cell_list:
+                    cell.setForeground(QtCore.Qt.gray)
+            a_code.setBackground(self.COLOR_GREEN)
+            column = 0
+            for cell in cell_list:
+                cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+                cell.setBackground(background)
+                self.tableWidget_list.setItem(row, column, cell)
+                column += 1
+
 #            column = 0
 #            for content in fund:
 #                content_for_fill = QtWidgets.QTableWidgetItem(content)
