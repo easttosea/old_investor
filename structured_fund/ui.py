@@ -16,6 +16,7 @@ class Ui_Form(object):
         self.tableWidget_handicap.setEnabled(True)
         self.tableWidget_handicap.setGeometry(QtCore.QRect(1460, 10, 420, 400))
         self.tableWidget_handicap.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.tableWidget_handicap.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.tableWidget_handicap.setShowGrid(False)
         self.tableWidget_handicap.setGridStyle(QtCore.Qt.NoPen)
         self.tableWidget_handicap.setWordWrap(True)
@@ -23,7 +24,11 @@ class Ui_Form(object):
         self.tableWidget_handicap.setRowCount(10)
         self.tableWidget_handicap.setColumnCount(2)
         self.tableWidget_handicap.setObjectName("tableWidget_handicap")
-        self.tableWidget_handicap.verticalHeader().setVisible(False)
+        self.tableWidget_handicap.horizontalHeader().setVisible(False)
+        self.tableWidget_handicap.horizontalHeader().setDefaultSectionSize(60)
+        self.tableWidget_handicap.verticalHeader().setVisible(True)
+        self.tableWidget_handicap.verticalHeader().setCascadingSectionResizes(False)
+        self.tableWidget_handicap.verticalHeader().setDefaultSectionSize(30)
         self.tableWidget_list = QtWidgets.QTableWidget(Form)
         self.tableWidget_list.setGeometry(QtCore.QRect(10, 10, 1400, 900))
         font = QtGui.QFont()
@@ -46,7 +51,6 @@ class Ui_Form(object):
         self.tableWidget_list.verticalHeader().setVisible(False)
 
         self.retranslateUi(Form)
-        self.tableWidget_list.itemSelectionChanged.connect(self.tableWidget_handicap.update)
         QtCore.QMetaObject.connectSlotsByName(Form)
 
     def retranslateUi(self, Form):

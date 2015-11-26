@@ -260,6 +260,11 @@ class StructuredFund(object):
         frame_output['next_annual_rate'] = frame_output['next_annual_rate'].map(lambda x: '%.2f%%' % (x*100))
         frame_output['modified_rate_of_return'] = frame_output['modified_rate_of_return'].map(
             lambda x: '%.3f%%' % (x*100))
+        for column in [
+            'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p',
+            'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v',
+            'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close', 'a_open']:
+            frame_output[column] = frame_output[column].map(str)
         for index in self.net_value_0:
             frame_output.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
         frame_output = frame_output.sort_values(by='modified_rate_of_return', ascending=False)

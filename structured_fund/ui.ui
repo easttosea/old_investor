@@ -28,6 +28,9 @@
    <property name="editTriggers">
     <set>QAbstractItemView::NoEditTriggers</set>
    </property>
+   <property name="selectionMode">
+    <enum>QAbstractItemView::NoSelection</enum>
+   </property>
    <property name="showGrid">
     <bool>false</bool>
    </property>
@@ -49,8 +52,20 @@
    <property name="columnCount">
     <number>2</number>
    </property>
-   <attribute name="verticalHeaderVisible">
+   <attribute name="horizontalHeaderVisible">
     <bool>false</bool>
+   </attribute>
+   <attribute name="horizontalHeaderDefaultSectionSize">
+    <number>60</number>
+   </attribute>
+   <attribute name="verticalHeaderVisible">
+    <bool>true</bool>
+   </attribute>
+   <attribute name="verticalHeaderCascadingSectionResizes">
+    <bool>false</bool>
+   </attribute>
+   <attribute name="verticalHeaderDefaultSectionSize">
+    <number>30</number>
    </attribute>
    <row/>
    <row/>
@@ -71,7 +86,7 @@
      <x>10</x>
      <y>10</y>
      <width>1400</width>
-     <height>980</height>
+     <height>900</height>
     </rect>
    </property>
    <property name="font">
@@ -138,22 +153,5 @@
   </widget>
  </widget>
  <resources/>
- <connections>
-  <connection>
-   <sender>tableWidget_list</sender>
-   <signal>itemSelectionChanged()</signal>
-   <receiver>tableWidget_handicap</receiver>
-   <slot>update()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>1272</x>
-     <y>139</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>1515</x>
-     <y>155</y>
-    </hint>
-   </hints>
-  </connection>
- </connections>
+ <connections/>
 </ui>
