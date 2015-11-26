@@ -205,8 +205,8 @@ class StructuredFund(object):
         self.net_value_0 = list(self.frame_info[self.frame_info.a_net_value == 0].index)
 
         # 6. Save the data into sqlite database
-        engine = create_engine('sqlite:///fund.db')
-        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
+#        engine = create_engine('sqlite:///fund.db')
+#        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
 
     def init_fund_code(self):
         self.fund_a_code = list(self.frame_info['a_code'].values)
@@ -237,8 +237,8 @@ class StructuredFund(object):
                 self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
                 self.frame_realtime['days_to_next_rate_adjustment'] / 365 *
                 (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
-            engine = create_engine('sqlite:///fund.db')
-            self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
+#            engine = create_engine('sqlite:///fund.db')
+#            self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
             return True
         else:
             return False
@@ -247,7 +247,9 @@ class StructuredFund(object):
         frame_output = self.frame_realtime.loc[:, [
             'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_increase_value', 'a_amount',
             'a_net_value', 'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
-            'modified_rate_of_return']]
+            'modified_rate_of_return', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v',
+            'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v', 'a_a3_p',
+            'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close', 'a_open']]
         frame_output['a_price'] = frame_output['a_price'].map(lambda x: '%.3f' % x)
         frame_output['a_increase_rate'] = frame_output['a_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
         frame_output['a_amount'] = frame_output['a_amount'].map(lambda x: '%.1f万' % (x/10000))
@@ -261,7 +263,7 @@ class StructuredFund(object):
         for index in self.net_value_0:
             frame_output.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
         frame_output = frame_output.sort_values(by='modified_rate_of_return', ascending=False)
-        return list(frame_output.values)
+        return frame_output
 
 
 def _format_convert(source_data, target_type, source_format='', decimal=2):

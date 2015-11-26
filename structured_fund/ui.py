@@ -11,9 +11,21 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setObjectName("Form")
-        Form.resize(1200, 800)
+        Form.resize(1920, 1000)
+        self.tableWidget_handicap = QtWidgets.QTableWidget(Form)
+        self.tableWidget_handicap.setEnabled(True)
+        self.tableWidget_handicap.setGeometry(QtCore.QRect(1460, 10, 420, 400))
+        self.tableWidget_handicap.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.tableWidget_handicap.setShowGrid(False)
+        self.tableWidget_handicap.setGridStyle(QtCore.Qt.NoPen)
+        self.tableWidget_handicap.setWordWrap(True)
+        self.tableWidget_handicap.setCornerButtonEnabled(True)
+        self.tableWidget_handicap.setRowCount(10)
+        self.tableWidget_handicap.setColumnCount(2)
+        self.tableWidget_handicap.setObjectName("tableWidget_handicap")
+        self.tableWidget_handicap.verticalHeader().setVisible(False)
         self.tableWidget_list = QtWidgets.QTableWidget(Form)
-        self.tableWidget_list.setGeometry(QtCore.QRect(50, 50, 1100, 700))
+        self.tableWidget_list.setGeometry(QtCore.QRect(10, 10, 1400, 900))
         font = QtGui.QFont()
         font.setPointSize(10)
         self.tableWidget_list.setFont(font)
@@ -32,10 +44,12 @@ class Ui_Form(object):
         self.tableWidget_list.horizontalHeader().setDefaultSectionSize(80)
 
         self.retranslateUi(Form)
+        self.tableWidget_list.itemSelectionChanged.connect(self.tableWidget_handicap.update)
         QtCore.QMetaObject.connectSlotsByName(Form)
 
     def retranslateUi(self, Form):
         _translate = QtCore.QCoreApplication.translate
         Form.setWindowTitle(_translate("Form", "分级基金"))
+        self.tableWidget_handicap.setSortingEnabled(False)
         self.tableWidget_list.setSortingEnabled(False)
 
