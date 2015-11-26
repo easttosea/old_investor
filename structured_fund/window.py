@@ -17,10 +17,8 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
         self.statusBar().showMessage('准备开始')
         self.signal_fill_table.connect(self.fill_the_table)
         self.signal_statusbar_showmessage.connect(self.statusBar().showMessage)
-        self.COLOR_RED = QtGui.QColor(255, 92, 92)
-        self.COLOR_GREEN = QtGui.QColor(57, 227, 101)
-        self.COLOR_LIGHT_YELLOW = QtGui.QColor(255, 255, 220)
-        self.COLOR_LIGHT_CYAN = QtGui.QColor(220, 255, 255)
+        self.COLOR_RED = QtGui.QColor(200, 0, 0)
+        self.COLOR_GREEN = QtGui.QColor(20, 150, 53)
 
     def fill_the_table(self, fund_a, a_volume_0):
         row = 0
@@ -39,10 +37,20 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             modified_rate_of_return = QtWidgets.QTableWidgetItem(fund[11])
             cell_list = [a_code, a_name, a_price, a_increase_rate, a_amount, a_net_value, a_premium_rate, rate_rule,
                          current_annual_rate, next_annual_rate, modified_rate_of_return]
-            if rate_rule == '1年+3.0%':
-                background = self.COLOR_LIGHT_YELLOW
-            elif rate_rule == '1年+4.0%':
-                background = self.COLOR_LIGHT_CYAN
+            if fund[8] == '1年+3.0%':
+                background = QtGui.QColor(250, 250, 250)
+            elif fund[8] == '1年+3.2%':
+                background = QtGui.QColor(245, 245, 245)
+            elif fund[8] == '1年+3.5%' or fund[8] == '固定5.0%':
+                background = QtGui.QColor(240, 240, 240)
+            elif fund[8] == '1年+4.0%' or fund[8] == '固定5.8%':
+                background = QtGui.QColor(235, 235, 235)
+            elif fund[8] == '1年+4.5%' or fund[8] == '固定6.0%':
+                background = QtGui.QColor(230, 230, 230)
+            elif fund[8] == '1年+5.0%':
+                background = QtGui.QColor(225, 225, 225)
+            elif fund[8] == '固定7.0%':
+                background = QtGui.QColor(220, 220, 220)
             else:
                 background = QtCore.Qt.white
 
@@ -55,8 +63,8 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
 
             if fund[0] in a_volume_0:
                 for cell in cell_list:
-                    cell.setForeground(QtCore.Qt.gray)
-            a_code.setBackground(self.COLOR_GREEN)
+                    cell.setForeground(QtGui.QColor(200, 200, 200))
+
             column = 0
             for cell in cell_list:
                 cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
