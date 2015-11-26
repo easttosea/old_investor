@@ -38,21 +38,19 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             cell_list = [a_code, a_name, a_price, a_increase_rate, a_amount, a_net_value, a_premium_rate, rate_rule,
                          current_annual_rate, next_annual_rate, modified_rate_of_return]
             if fund[8] == '1年+3.0%':
-                background = QtGui.QColor(250, 250, 250)
+                rate_rule.setForeground(QtGui.QColor(200, 0, 0))
             elif fund[8] == '1年+3.2%':
-                background = QtGui.QColor(245, 245, 245)
+                rate_rule.setForeground(QtGui.QColor(200, 128, 0))
             elif fund[8] == '1年+3.5%' or fund[8] == '固定5.0%':
-                background = QtGui.QColor(240, 240, 240)
+                rate_rule.setForeground(QtGui.QColor(200, 200, 0))
             elif fund[8] == '1年+4.0%' or fund[8] == '固定5.8%':
-                background = QtGui.QColor(235, 235, 235)
+                rate_rule.setForeground(QtGui.QColor(128, 200, 0))
             elif fund[8] == '1年+4.5%' or fund[8] == '固定6.0%':
-                background = QtGui.QColor(230, 230, 230)
+                rate_rule.setForeground(QtGui.QColor(0, 200, 0))
             elif fund[8] == '1年+5.0%':
-                background = QtGui.QColor(225, 225, 225)
+                rate_rule.setForeground(QtGui.QColor(0, 200, 128))
             elif fund[8] == '固定7.0%':
-                background = QtGui.QColor(220, 220, 220)
-            else:
-                background = QtCore.Qt.white
+                rate_rule.setForeground(QtGui.QColor(0, 200, 200))
 
             if a_increase_value > 0:
                 a_price.setForeground(self.COLOR_RED)
@@ -68,7 +66,6 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             column = 0
             for cell in cell_list:
                 cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-                cell.setBackground(background)
                 self.tableWidget_list.setItem(row, column, cell)
                 column += 1
 
