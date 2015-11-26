@@ -35,7 +35,7 @@ class StructuredFund(object):
             'mother_code', 'mother_name', 'establish_date', 'list_date', 'a_code', 'a_name', 'b_code',
             'b_name', 'ratio', 'delist_date', 'current_annual_rate', 'index_code', 'index_name'])
         frame_info_1 = frame_info_1[frame_info_1['a_code'].str.contains(r'15|50')]
-        frame_info_1 = frame_info_1.set_index('mother_code')
+        frame_info_1 = frame_info_1.set_index('mother_code', drop=False)
         frame_info_1['establish_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
                                           frame_info_1['establish_date']]
         frame_info_1['list_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
@@ -245,7 +245,7 @@ class StructuredFund(object):
 
     def output_a(self):
         frame_output = self.frame_realtime.loc[:, [
-            'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_increase_value', 'a_amount',
+            'mother_code', 'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_increase_value', 'a_amount',
             'a_net_value', 'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
             'modified_rate_of_return', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v',
             'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v', 'a_a3_p',

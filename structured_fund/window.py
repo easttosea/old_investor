@@ -5,7 +5,8 @@ from PyQt5 import QtGui
 
 
 class MyWindow(QtWidgets.QMainWindow, Ui_Form):
-    signal_fill_table = QtCore.pyqtSignal(list, list)
+    signal_fill_table_list = QtCore.pyqtSignal(list, list)
+    signal_fill_table_handicap = QtCore.pyqtSignal(list)
     signal_statusbar_showmessage = QtCore.pyqtSignal(str)
 
     def __init__(self):
@@ -15,12 +16,14 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             ['代码', '名称', '现价',  '涨幅', '成交额', '净值', '溢价率', '利率规则', '本期利率', '下期利率',
              '修正收益率'])
         self.statusBar().showMessage('准备开始')
-        self.signal_fill_table.connect(self.fill_the_table)
+        self.signal_fill_table_list.connect(self.fill_table_list)
+        self.signal_fill_table_handicap.connect(self.fill_table_handicap)
         self.signal_statusbar_showmessage.connect(self.statusBar().showMessage)
         self.COLOR_RED = QtGui.QColor(200, 0, 0)
         self.COLOR_GREEN = QtGui.QColor(20, 150, 53)
 
-    def fill_the_table(self, fund_a, a_volume_0):
+    def fill_table_list(self, fund_a, a_volume_0):
+        self.tableWidget_list.setRowCount(len(fund_a))
         row = 0
         for fund in fund_a:
             a_code = QtWidgets.QTableWidgetItem(fund[0])
@@ -68,11 +71,16 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
                 cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
                 self.tableWidget_list.setItem(row, column, cell)
                 column += 1
-
-#            column = 0
-#            for content in fund:
-#                content_for_fill = QtWidgets.QTableWidgetItem(content)
-#                self.tableWidget_list.setItem(row, column, content_for_fill)
-#                column += 1
             row += 1
 #        self.tableWidget_list.resizeColumnsToContents()
+
+    def fill_table_handicap(self, prices):
+        row = 0
+        column = 0
+        for price in prices:
+            cell = QtWidgets.QTableWidgetItem(str(price))
+            self.tableWidget_handicap.setItem(row, column, cell)
+            column += 1
+            if column > 1:
+                column = 0
+                row += 1
