@@ -13,8 +13,6 @@ class StructuredFund(object):
     def __init__(self):
         self.fund_a_code = []
         self.fund_b_code = []
-        self.net_value_0 = []
-        self.a_volume_0 = []
         self.frame_info = None
         self.frame_realtime = None
         self.update_time = ''
@@ -99,7 +97,7 @@ class StructuredFund(object):
             elif cell == '特殊情况':
                 next_annual_rate = 0
             else:
-                next_annual_rate = 0.0888
+                next_annual_rate = 0.0358
             next_annual_rate_list.append(next_annual_rate)
         frame_info_1['next_annual_rate'] = next_annual_rate_list
 
@@ -201,10 +199,7 @@ class StructuredFund(object):
         self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4], how='inner')
         self.frame_info = self.frame_info.dropna(how='any', subset=['list_date'])
 
-        # 5. Get the list of data whose 'a net value' is 0
-        self.net_value_0 = list(self.frame_info[self.frame_info.a_net_value == 0].index)
-
-        # 6. Save the data into sqlite database
+        # 5. Save the data into sqlite database
 #        engine = create_engine('sqlite:///fund.db')
 #        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
 
@@ -222,8 +217,7 @@ class StructuredFund(object):
                 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p',
                 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
-            self.a_volume_0 = list(self.frame_realtime[self.frame_realtime.a_volume == 0].index)
-            for index in self.a_volume_0:
+            for index in self.frame_realtime[self.frame_realtime.a_volume == 0].index:
                 self.frame_realtime.at[index, 'a_price'] = self.frame_realtime.at[index, 'a_pre_close']
             self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
             self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
@@ -242,63 +236,6 @@ class StructuredFund(object):
             return True
         else:
             return False
-
-    def output_a(self):
-        frame_output = self.frame_realtime.loc[:, [
-            'mother_code', 'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_increase_value', 'a_amount',
-            'a_net_value', 'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
-            'modified_rate_of_return', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v',
-            'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v', 'a_a3_p',
-            'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close', 'a_open']]
-        frame_output['a_price'] = frame_output['a_price'].map(lambda x: '%.3f' % x)
-        frame_output['a_increase_rate'] = frame_output['a_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
-        frame_output['a_amount'] = frame_output['a_amount'].map(lambda x: '%.1f万' % (x/10000))
-        frame_output['a_net_value'] = frame_output['a_net_value'].map(lambda x: '%.3f' % x)
-        frame_output['a_premium_rate'] = frame_output['a_premium_rate'].map(lambda x: '%.2f%%' % (x*100))
-        frame_output['current_annual_rate'] = frame_output['current_annual_rate'].map(
-            lambda x: '%.2f%%' % (x*100))
-        frame_output['next_annual_rate'] = frame_output['next_annual_rate'].map(lambda x: '%.2f%%' % (x*100))
-        frame_output['modified_rate_of_return'] = frame_output['modified_rate_of_return'].map(
-            lambda x: '%.3f%%' % (x*100))
-        for column in [
-            'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p',
-            'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p', 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v',
-            'a_a5_p', 'a_a5_v', 'a_high', 'a_low', 'a_pre_close', 'a_open']:
-            frame_output[column] = frame_output[column].map(str)
-        for index in self.net_value_0:
-            frame_output.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
-        frame_output = frame_output.sort_values(by='modified_rate_of_return', ascending=False)
-        return frame_output
-
-
-def _format_convert(source_data, target_type, source_format='', decimal=2):
-    if target_type == 'int':
-        try:
-            return int(source_data)
-        except ValueError:
-            return 0
-    elif target_type == 'float':
-        try:
-            return float(source_data)
-        except ValueError:
-            return 0.0
-    elif target_type == 'date':
-        try:
-            return datetime.datetime.strptime(source_data, source_format).date()
-        except ValueError:
-            return None
-    elif target_type == 'float_percent':
-        try:
-            return float(source_data[:-1]) / 100
-        except ValueError:
-            return 0.0
-
-
-def _minus_days_of_two_dates(first_date, second_date):
-    try:
-        return (first_date - second_date).days
-    except TypeError:
-        return -1
 
 
 def _realtime_quotations(symbols):
@@ -330,9 +267,31 @@ def _realtime_quotations(symbols):
     return data_frame, update_time
 
 
-if __name__ == '__main__':
-    structured_fund = StructuredFund()
-    structured_fund.init_fund_info()
-    structured_fund.init_fund_code()
-    structured_fund.update_realtime_quotations()
-    print(structured_fund.output_a())
+def _minus_days_of_two_dates(first_date, second_date):
+    try:
+        return (first_date - second_date).days
+    except TypeError:
+        return -1
+
+
+def _format_convert(source_data, target_type, source_format='', decimal=2):
+    if target_type == 'int':
+        try:
+            return int(source_data)
+        except ValueError:
+            return 0
+    elif target_type == 'float':
+        try:
+            return float(source_data)
+        except ValueError:
+            return 0.0
+    elif target_type == 'date':
+        try:
+            return datetime.datetime.strptime(source_data, source_format).date()
+        except ValueError:
+            return None
+    elif target_type == 'float_percent':
+        try:
+            return float(source_data[:-1]) / 100
+        except ValueError:
+            return 0.0
