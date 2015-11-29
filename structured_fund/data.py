@@ -13,9 +13,11 @@ class StructuredFund(object):
     def __init__(self):
         self.fund_a_code = []
         self.fund_b_code = []
+        self.index_code = []
         self.frame_info = None
         self.frame_realtime = None
         self.update_time = ''
+        self.net_value_date = ''
         self.TODAY_DATE = datetime.date.today()
 
     def init_fund_info(self):
@@ -33,7 +35,7 @@ class StructuredFund(object):
             'mother_code', 'mother_name', 'establish_date', 'list_date', 'a_code', 'a_name', 'b_code',
             'b_name', 'ratio', 'delist_date', 'current_annual_rate', 'index_code', 'index_name'])
         frame_info_1 = frame_info_1[frame_info_1['a_code'].str.contains(r'15|50')]
-        frame_info_1 = frame_info_1.set_index('mother_code', drop=False)
+        frame_info_1 = frame_info_1.set_index('mother_code')
         frame_info_1['establish_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
                                           frame_info_1['establish_date']]
         frame_info_1['list_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
@@ -176,6 +178,10 @@ class StructuredFund(object):
         url = 'http://www.abcfund.cn/data/premium.php'
         text = urllib.request.urlopen(url, timeout=10).read()
         text = text.decode('GBK')
+        # Get the date of the data of net value
+        date = re.findall(r'\d{4}年\d{1,2}月\d{1,2}日', text)
+        self.net_value_date = datetime.datetime.strptime(date[0], '%Y年%m月%d日').date()
+        # Get the other data
         reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
         data = reg.findall(text)
         data_list = []
@@ -186,15 +192,24 @@ class StructuredFund(object):
             'mother_code', 'mother_name', 'mother_net_value', 'a_code', 'a_name', 'a_net_value',
             'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
             'b_volume', 'whole_volume'])
+        frame_info_4 = frame_info_4[frame_info_4.mother_code != '-']
         frame_info_4 = frame_info_4.drop(
             ['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name',
              'b_price', 'b_premium', 'b_volume', 'whole_volume'], axis=1)
         frame_info_4 = frame_info_4.set_index('mother_code')
-        frame_info_4['mother_net_value'] = [_format_convert(cell, 'float') for cell in
-                                            frame_info_4['mother_net_value']]
         frame_info_4['a_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['a_net_value']]
         frame_info_4['b_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['b_net_value']]
-
+        mother_net_value_column = []
+        for code in frame_info_4.index:
+#            fund = frame_info_4.loc[code, ['mother_net_value', 'a_net_value', 'b_net_value', 'a_in_10']]
+            fund = frame_info_4.loc[code, ['mother_net_value', 'a_net_value', 'b_net_value']]
+            try:
+                mother_net_value = float(fund.mother_net_value)
+            except ValueError:
+#                mother_net_value = ((fund.a_net_value * fund.a_in_10) + (fund.b_net_value * (10 - fund.a_in_10))) / 10
+                mother_net_value = ((fund.a_net_value * 7) + (fund.b_net_value * (10 - 7))) / 10
+            mother_net_value_column.append(mother_net_value)
+        frame_info_4['mother_net_value'] = mother_net_value_column
         # 4. Join the data frames together
         self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4], how='inner')
         self.frame_info = self.frame_info.dropna(how='any', subset=['list_date'])
@@ -206,21 +221,26 @@ class StructuredFund(object):
     def init_fund_code(self):
         self.fund_a_code = list(self.frame_info['a_code'].values)
         self.fund_b_code = list(self.frame_info['b_code'].values)
+        self.index_code = []
+        for code in list(set(list(self.frame_info['index_code']))):
+            if code[0:3] == '399':
+                self.index_code.append(code)
 
     def update_realtime_quotations(self):
-        frame_realtime, update_time = _realtime_quotations(self.fund_a_code)
+        # 1. Update the data of fund_a
+        frame_realtime_a = _realtime_quotations(self.fund_a_code)
+        update_time = frame_realtime_a.iat[0, -1]
         if self.update_time != update_time:
             self.update_time = update_time
-            self.frame_realtime = frame_realtime
-            self.frame_realtime.columns = [
+            frame_realtime_a.columns = [
                 'a_name', 'a_price', 'a_volume', 'a_amount', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v',
                 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p',
                 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
-            for index in self.frame_realtime[self.frame_realtime.a_volume == 0].index:
-                self.frame_realtime.at[index, 'a_price'] = self.frame_realtime.at[index, 'a_pre_close']
-            self.frame_realtime = self.frame_realtime.drop('a_name', axis=1)
-            self.frame_realtime = self.frame_info.join(self.frame_realtime, on='a_code', how='inner')
+            for index in frame_realtime_a[frame_realtime_a.a_volume == 0].index:
+                frame_realtime_a.at[index, 'a_price'] = frame_realtime_a.at[index, 'a_pre_close']
+            frame_realtime_a = frame_realtime_a.drop('a_name', axis=1)
+            self.frame_realtime = self.frame_info.join(frame_realtime_a, on='a_code', how='inner')
             self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
                 'a_pre_close']
             self.frame_realtime['a_increase_rate'] = self.frame_realtime[
@@ -231,8 +251,33 @@ class StructuredFund(object):
                 self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
                 self.frame_realtime['days_to_next_rate_adjustment'] / 365 *
                 (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
-#            engine = create_engine('sqlite:///fund.db')
-#            self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
+
+            # 2. update the data of the increase rate of index
+            frame_realtime_index = _realtime_quotations(self.index_code)
+            frame_realtime_index['index_increase_rate'] = (frame_realtime_index['price'] - frame_realtime_index[
+                'pre_close']) / frame_realtime_index['pre_close']
+            frame_realtime_index = frame_realtime_index.loc[:, ['index_increase_rate']]
+            self.frame_realtime = self.frame_realtime.join(frame_realtime_index, on='index_code')
+
+            # 3. Calculate the distance of irregular conversion
+            mother_descending_distance_list = []
+            for code in self.frame_realtime.index:
+                fund = self.frame_realtime.loc[code, ['mother_net_value', 'a_net_value', 'a_date',
+                                               'index_increase_rate', 'descending_conversion_condition']]
+                if fund.isnull().index_increase_rate or self.net_value_date == fund.a_date:
+                    mother_price = fund.mother_net_value
+                else:
+                    mother_price = fund.mother_net_value * (1 + fund.index_increase_rate * 0.95)
+                if fund.descending_conversion_condition > 0:
+                    mother_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
+                elif fund.descending_conversion_condition < 0:
+                    mother_descending_conversion_condition = fund.descending_conversion_condition * (-1)
+                mother_descending_distance = (mother_price - mother_descending_conversion_condition) / mother_price
+                mother_descending_distance_list.append(mother_descending_distance)
+            self.frame_realtime['mother_descending_distance'] = mother_descending_distance_list
+            # Write into SQLite
+            engine = create_engine('sqlite:///fund.db')
+            self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
             return True
         else:
             return False
@@ -263,8 +308,8 @@ def _realtime_quotations(symbols):
     for column in ['price', 'amount', 'b1_p', 'b2_p', 'b3_p', 'b4_p', 'b5_p', 'a1_p', 'a2_p', 'a3_p',
                    'a4_p', 'a5_p', 'high', 'low', 'pre_close', 'open']:
         data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
-    update_time = data_frame.iat[0, -1]
-    return data_frame, update_time
+    data_frame['date'] = [_format_convert(cell, 'date', source_format='%Y-%m-%d') for cell in data_frame['date']]
+    return data_frame
 
 
 def _minus_days_of_two_dates(first_date, second_date):
