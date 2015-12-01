@@ -106,6 +106,9 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             if fund[0] in self.frame_realtime.a_code[self.frame_realtime.a_volume == 0]:
                 for cell in cell_list:
                     cell.setForeground(self.COLOR_GRAY)
+            if self.frame_realtime.isnull().mother_descending_distance[row]:
+                mother_descending_distance.setText('无下折')
+                mother_descending_distance.setForeground(self.COLOR_GRAY)
             column = 0
             for cell in cell_list:
                 cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)

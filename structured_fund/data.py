@@ -268,11 +268,14 @@ class StructuredFund(object):
                     mother_price = fund.mother_net_value
                 else:
                     mother_price = fund.mother_net_value * (1 + fund.index_increase_rate * 0.95)
-                if fund.descending_conversion_condition > 0:
-                    mother_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
-                elif fund.descending_conversion_condition < 0:
-                    mother_descending_conversion_condition = fund.descending_conversion_condition * (-1)
-                mother_descending_distance = (mother_price - mother_descending_conversion_condition) / mother_price
+                if fund.descending_conversion_condition == 0:
+                    mother_descending_distance = None
+                else:
+                    if fund.descending_conversion_condition > 0:
+                        mother_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
+                    else:
+                        mother_descending_conversion_condition = fund.descending_conversion_condition * (-1)
+                    mother_descending_distance = (mother_price - mother_descending_conversion_condition) / mother_price
                 mother_descending_distance_list.append(mother_descending_distance)
             self.frame_realtime['mother_descending_distance'] = mother_descending_distance_list
             # Write into SQLite
