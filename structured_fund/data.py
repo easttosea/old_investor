@@ -1,85 +1,102 @@
 # -*- coding: utf-8 -*-
-from sqlalchemy import create_engine
-import logging
-import urllib
+
 import re
-import pandas as pd
+import socket
 import datetime
-import tushare as ts
+import urllib
 import sqlite3
+import pandas as pd
+from sqlalchemy import create_engine
+import tushare as ts
+import logging
+logging.basicConfig(level=logging.INFO)
 
 
 class StructuredFund(object):
+    """The structured fund here."""
+
     def __init__(self):
+        self.TODAY_DATE = datetime.date.today()
+        self.MANUAL_CORRECT_RATE = {'163109': [0.0575, '1年+3.0%'], '161719': [0.055, '3年+1.25%'],
+                                    '162215': [0.0358, '国债×1.3']}
         self.fund_a_code = []
         self.fund_b_code = []
-        self.index_code = []
+        self.i_code = []
         self.frame_info = None
         self.frame_realtime = None
         self.update_time = ''
         self.net_value_date = ''
-        self.TODAY_DATE = datetime.date.today()
 
     def init_fund_info(self):
+        """Init the info of the structured fund."""
         # 1. Get the basic info
         url = 'http://www.abcfund.cn/style/fundlist.php'
-        text = urllib.request.urlopen(url, timeout=10).read()
-        text = text.decode('GBK')
-        reg = re.compile(r'<tr.*?><td>(.*?)</td></tr>')
-        data = reg.findall(text)
-        data_list = []
-        for row in data:
-            if len(row) > 1:
-                data_list.append([cell for cell in row.split('</td><td>')])
+        reg_ex = r'<tr.*?><td>(.*?)</td></tr>'
+        split_str = '</td><td>'
+        data_list = web_crawler(url, reg_ex, split_str)
         frame_info_1 = pd.DataFrame(data_list, columns=[
-            'mother_code', 'mother_name', 'establish_date', 'list_date', 'a_code', 'a_name', 'b_code',
-            'b_name', 'ratio', 'delist_date', 'current_annual_rate', 'index_code', 'index_name'])
-        frame_info_1 = frame_info_1[frame_info_1['a_code'].str.contains(r'15|50')]
-        frame_info_1 = frame_info_1.set_index('mother_code')
-        frame_info_1['establish_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
-                                          frame_info_1['establish_date']]
-        frame_info_1['list_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
-                                     frame_info_1['list_date']]
-        frame_info_1['delist_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
-                                       frame_info_1['delist_date']]
-        frame_info_1['years_to_delist_date'] = [_minus_days_of_two_dates(date, self.TODAY_DATE) / 365 for date
-                                                in frame_info_1['delist_date']]
-        # Extract the useful strings of ratio, and get the ratio of a in 10
-        ratio_list = []
-        a_in_10_list = []
-        for cell in frame_info_1['ratio']:
-            ratio = cell[-3:]
-            if ratio == '1:1':
-                ratio = '5:5'
-            ratio_list.append(ratio)
-            a_in_10 = int(ratio[0:1])
-            a_in_10_list.append(a_in_10)
-        frame_info_1['ratio'] = ratio_list
-        frame_info_1['a_in_10'] = a_in_10_list
-        # Extract the useful strings of current_annual_rate and rate_rule
-        current_annual_rate_list = []
-        rate_rule_list = []
-        for cell in frame_info_1['current_annual_rate']:
-            data = cell.split('<br><font color=#696969>')
-            if len(data) > 1:
-                current_annual_rate = _format_convert(data[0], 'float_percent')
-                rate_rule = data[1][:-7]
+            'm_code', 'm_name', 'establish_date', 'list_date', 'a_code', 'a_name', 'b_code',
+            'b_name', 'a_to_b', 'delist_date', 'current_annual_rate', 'i_code', 'i_name'])
+        frame_info_1 = frame_info_1[frame_info_1.a_code.str.contains(r'15|50')]
+        frame_info_1 = frame_info_1.set_index('m_code')
+        establish_date_column = []
+        list_date_column = []
+        delist_date_column = []
+        years_to_delist_date_column = []
+        a_in_10_column = []
+        a_to_b_column = []
+        current_annual_rate_column = []
+        rate_rule_column = []
+        for index in frame_info_1.index:
+            fund = frame_info_1.loc[index, :]
+            try:
+                establish_date_column.append(datetime.datetime.strptime(fund.establish_date, '%Y-%m-%d').date())
+            except ValueError:
+                establish_date_column.append(None)
+            try:
+                list_date_column.append(datetime.datetime.strptime(fund.list_date, '%Y-%m-%d').date())
+            except ValueError:
+                list_date_column.append(None)
+            try:
+                delist_date = datetime.datetime.strptime(fund.delist_date, '%Y-%m-%d').date()
+            except ValueError:
+                delist_date = None
+            finally:
+                delist_date_column.append(delist_date)
+            try:
+                years_to_delist_date_column.append((delist_date - self.TODAY_DATE).days / 365)
+            except TypeError:
+                years_to_delist_date_column.append(None)
+            a_in_10 = (int(fund.a_to_b[-3:-2]) / (int(fund.a_to_b[-3:-2]) + int(fund.a_to_b[-1:]))) * 10
+            a_to_b = '{0}:{1}'.format(int(a_in_10), int(10-a_in_10))
+            a_in_10_column.append(a_in_10)
+            a_to_b_column.append(a_to_b)
+            cell = fund.current_annual_rate.split('<br><font color=#696969>')
+            if index in self.MANUAL_CORRECT_RATE:
+                current_annual_rate, rate_rule = self.MANUAL_CORRECT_RATE[index]
+            elif len(cell) > 1:
+                current_annual_rate = _format_convert(cell[0], 'float_percent')
+                rate_rule = cell[1][:-7]
                 if rate_rule == '固定':
-                    rate_rule = '固定' + data[0]
+                    rate_rule = '固定' + cell[0]
                 if '.' not in rate_rule:
                     rate_rule = rate_rule[:-1] + '.0%'
             else:
-                current_annual_rate = 0
-                rate_rule = data[0]
-            current_annual_rate_list.append(current_annual_rate)
-            rate_rule_list.append(rate_rule)
-        frame_info_1['current_annual_rate'] = current_annual_rate_list
-        frame_info_1['rate_rule'] = rate_rule_list
-        manual_change = [('163109', 0.0575, '1年+3.0%'), ('161719', 0.055, '3年+1.25%'),
-                         ('162215', 0.0358, '国债×1.3')]
-        for code, current_annual_rate, rate_rule in manual_change:
-            if code in frame_info_1.index:
-                frame_info_1.loc[code, ['current_annual_rate', 'rate_rule']] = (current_annual_rate, rate_rule)
+                current_annual_rate = None
+                rate_rule = cell[0]
+            current_annual_rate_column.append(current_annual_rate)
+            rate_rule_column.append(rate_rule)
+        frame_info_1['establish_date'] = establish_date_column
+        frame_info_1['list_date'] = list_date_column
+        frame_info_1['delist_date'] = delist_date_column
+        frame_info_1['years_to_delist_date'] = years_to_delist_date_column
+        frame_info_1['a_in_10'] = a_in_10_column
+        frame_info_1['a_to_b'] = a_to_b_column
+        frame_info_1['current_annual_rate'] = current_annual_rate_column
+        frame_info_1['rate_rule'] = rate_rule_column
+        # Extract the useful strings of current_annual_rate and rate_rule
+
+
         # Get the one-year deposit rate
         deposit_name, deposit_rate = ts.get_deposit_rate().loc[6, ['deposit_type', 'rate']]
         if deposit_name == '定期存款整存整取(一年)':
@@ -114,9 +131,9 @@ class StructuredFund(object):
             if len(row) > 1:
                 data_list.append([cell for cell in row.split('</td><td>')])
         frame_info_2 = pd.DataFrame(data_list, columns=[
-            'mother_code', 'mother_name', 'rate_adjustment_condition', 'next_rate_adjustment_date'])
-        frame_info_2 = frame_info_2.drop('mother_name', axis=1)
-        frame_info_2 = frame_info_2.set_index('mother_code')
+            'm_code', 'm_name', 'rate_adjustment_condition', 'next_rate_adjustment_date'])
+        frame_info_2 = frame_info_2.drop('m_name', axis=1)
+        frame_info_2 = frame_info_2.set_index('m_code')
         frame_info_2['next_rate_adjustment_date'] = [_format_convert(cell, 'date', '%Y-%m-%d') for cell in
                                                      frame_info_2['next_rate_adjustment_date']]
         frame_info_2['days_to_next_rate_adjustment'] = [_minus_days_of_two_dates(date, self.TODAY_DATE) for date
@@ -146,10 +163,10 @@ class StructuredFund(object):
             if len(row) > 1:
                 data_list.append([cell for cell in row.replace('</td><td>', '<td>').split('<td>')])
         frame_info_3 = pd.DataFrame(data_list, columns=[
-            'mother_code', 'mother_name', 'next_regular_conversion_date', 'days from now on',
+            'm_code', 'm_name', 'next_regular_conversion_date', 'days from now on',
             'ascending_conversion_condition', 'descending_conversion_condition'])
-        frame_info_3 = frame_info_3.drop(['mother_name', 'days from now on'], axis=1)
-        frame_info_3 = frame_info_3.set_index('mother_code')
+        frame_info_3 = frame_info_3.drop(['m_name', 'days from now on'], axis=1)
+        frame_info_3 = frame_info_3.set_index('m_code')
         frame_info_3['next_regular_conversion_date'] = [_format_convert(cell, 'date', '%Y年%m月%d日') for cell
                                                         in frame_info_3['next_regular_conversion_date']]
         # Extract the values of conversion condition
@@ -174,7 +191,7 @@ class StructuredFund(object):
             descending_conversion_condition_list.append(descending_conversion_condition)
         frame_info_3['descending_conversion_condition'] = descending_conversion_condition_list
 
-        # 4. Get the net value of mother fund, a and b
+        # 4. Get the net value of m fund, a and b
         url = 'http://www.abcfund.cn/data/premium.php'
         text = urllib.request.urlopen(url, timeout=10).read()
         text = text.decode('GBK')
@@ -189,42 +206,42 @@ class StructuredFund(object):
             if len(row) > 1:
                 data_list.append([cell for cell in row.split('</td><td>')])
         frame_info_4 = pd.DataFrame(data_list, columns=[
-            'mother_code', 'mother_name', 'mother_net_value', 'a_code', 'a_name', 'a_net_value',
+            'm_code', 'm_name', 'm_net_value', 'a_code', 'a_name', 'a_net_value',
             'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name', 'b_net_value', 'b_price', 'b_premium',
             'b_volume', 'whole_volume'])
-        frame_info_4 = frame_info_4[frame_info_4.mother_code != '-']
+        frame_info_4 = frame_info_4[frame_info_4.m_code != '-']
         frame_info_4 = frame_info_4.drop(
-            ['mother_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name',
+            ['m_name', 'a_code', 'a_name', 'a_price', 'a_premium', 'a_volume', 'b_code', 'b_name',
              'b_price', 'b_premium', 'b_volume', 'whole_volume'], axis=1)
-        frame_info_4 = frame_info_4.set_index('mother_code')
+        frame_info_4 = frame_info_4.set_index('m_code')
         frame_info_4['a_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['a_net_value']]
         frame_info_4['b_net_value'] = [_format_convert(cell, 'float') for cell in frame_info_4['b_net_value']]
-        mother_net_value_column = []
+        m_net_value_column = []
         for code in frame_info_4.index:
-#            fund = frame_info_4.loc[code, ['mother_net_value', 'a_net_value', 'b_net_value', 'a_in_10']]
-            fund = frame_info_4.loc[code, ['mother_net_value', 'a_net_value', 'b_net_value']]
+#            fund = frame_info_4.loc[code, ['m_net_value', 'a_net_value', 'b_net_value', 'a_in_10']]
+            fund = frame_info_4.loc[code, ['m_net_value', 'a_net_value', 'b_net_value']]
             try:
-                mother_net_value = float(fund.mother_net_value)
+                m_net_value = float(fund.m_net_value)
             except ValueError:
-#                mother_net_value = ((fund.a_net_value * fund.a_in_10) + (fund.b_net_value * (10 - fund.a_in_10))) / 10
-                mother_net_value = ((fund.a_net_value * 7) + (fund.b_net_value * (10 - 7))) / 10
-            mother_net_value_column.append(mother_net_value)
-        frame_info_4['mother_net_value'] = mother_net_value_column
+#                m_net_value = ((fund.a_net_value * fund.a_in_10) + (fund.b_net_value * (10 - fund.a_in_10))) / 10
+                m_net_value = ((fund.a_net_value * 7) + (fund.b_net_value * (10 - 7))) / 10
+            m_net_value_column.append(m_net_value)
+        frame_info_4['m_net_value'] = m_net_value_column
         # 4. Join the data frames together
         self.frame_info = frame_info_1.join([frame_info_2, frame_info_3, frame_info_4], how='inner')
         self.frame_info = self.frame_info.dropna(how='any', subset=['list_date'])
 
         # 5. Save the data into sqlite database
-#        engine = create_engine('sqlite:///fund.db')
-#        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
+        engine = create_engine('sqlite:///fund.db')
+        self.frame_info.to_sql('structured_fund_info', engine, if_exists='replace')
 
     def init_fund_code(self):
         self.fund_a_code = list(self.frame_info['a_code'].values)
         self.fund_b_code = list(self.frame_info['b_code'].values)
-        self.index_code = []
-        for code in list(set(list(self.frame_info['index_code']))):
+        self.i_code = []
+        for code in list(set(list(self.frame_info['i_code']))):
             if code[0:3] == '399':
-                self.index_code.append(code)
+                self.i_code.append(code)
 
     def update_realtime_quotations(self):
         # 1. Update the data of fund_a
@@ -253,31 +270,31 @@ class StructuredFund(object):
                 (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
 
             # 2. update the data of the increase rate of index
-            frame_realtime_index = _realtime_quotations(self.index_code)
-            frame_realtime_index['index_increase_rate'] = (frame_realtime_index['price'] - frame_realtime_index[
-                'pre_close']) / frame_realtime_index['pre_close']
-            frame_realtime_index = frame_realtime_index.loc[:, ['index_increase_rate']]
-            self.frame_realtime = self.frame_realtime.join(frame_realtime_index, on='index_code')
+            frame_realtime_i = _realtime_quotations(self.i_code)
+            frame_realtime_i['i_increase_rate'] = (frame_realtime_i['price'] - frame_realtime_i[
+                'pre_close']) / frame_realtime_i['pre_close']
+            frame_realtime_i = frame_realtime_i.loc[:, ['i_increase_rate']]
+            self.frame_realtime = self.frame_realtime.join(frame_realtime_i, on='i_code')
 
             # 3. Calculate the distance of irregular conversion
-            mother_descending_distance_list = []
+            m_descending_distance_list = []
             for code in self.frame_realtime.index:
-                fund = self.frame_realtime.loc[code, ['mother_net_value', 'a_net_value', 'a_date',
-                                               'index_increase_rate', 'descending_conversion_condition']]
-                if fund.isnull().index_increase_rate or self.net_value_date == fund.a_date:
-                    mother_price = fund.mother_net_value
+                fund = self.frame_realtime.loc[code, ['m_net_value', 'a_net_value', 'a_date',
+                                               'i_increase_rate', 'descending_conversion_condition']]
+                if fund.isnull().i_increase_rate or self.net_value_date == fund.a_date:
+                    m_price = fund.m_net_value
                 else:
-                    mother_price = fund.mother_net_value * (1 + fund.index_increase_rate * 0.95)
+                    m_price = fund.m_net_value * (1 + fund.i_increase_rate * 0.95)
                 if fund.descending_conversion_condition == 0:
-                    mother_descending_distance = None
+                    m_descending_distance = None
                 else:
                     if fund.descending_conversion_condition > 0:
-                        mother_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
+                        m_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
                     else:
-                        mother_descending_conversion_condition = fund.descending_conversion_condition * (-1)
-                    mother_descending_distance = (mother_price - mother_descending_conversion_condition) / mother_price
-                mother_descending_distance_list.append(mother_descending_distance)
-            self.frame_realtime['mother_descending_distance'] = mother_descending_distance_list
+                        m_descending_conversion_condition = fund.descending_conversion_condition * (-1)
+                    m_descending_distance = (m_price - m_descending_conversion_condition) / m_price
+                m_descending_distance_list.append(m_descending_distance)
+            self.frame_realtime['m_descending_distance'] = m_descending_distance_list
             # Write into SQLite
             engine = create_engine('sqlite:///fund.db')
             self.frame_realtime.to_sql('structured_fund_a', engine, if_exists='replace')
@@ -313,6 +330,43 @@ def _realtime_quotations(symbols):
         data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
     data_frame['date'] = [_format_convert(cell, 'date', source_format='%Y-%m-%d') for cell in data_frame['date']]
     return data_frame
+
+
+def web_crawler(url, reg_ex, split_str, replace_str=None, time_out=10):
+    """Crawl from a website, and extract the data into a list.
+
+    Args:
+        url: The url of website.
+        reg_ex: The regular expression for extracting the data from text.
+        split_str: The funds are split by the string of split_str.
+        replace_str: When the website text is not standard, the replace_str should be replaced to split_str.
+        time_out: The time limit of urlopen.
+
+    Returns:
+        A list of row data fetched. Each row is a list of strings. For example:
+        [['161022', '富国创业板指数分级', '150152', '创业板A', ...]
+         ['164705', '汇添富恒生指数分级', '150169', '恒生A', ...]
+         ...]
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=time_out) as f:
+            text = f.read()
+    except socket.timeout:
+        logging.info('Timeout when loading this url: {0}'.format(url))
+        return web_crawler(url, reg_ex, split_str, replace_str, time_out)
+    except socket.error:
+        logging.info('Socket error when loading this url: {0}'.format(url))
+        return web_crawler(url, reg_ex, split_str, replace_str, time_out)
+    text = text.decode('GBK')
+    reg = re.compile(reg_ex)
+    data = reg.findall(text)
+    if replace_str is not None:
+        data = data.replace(replace_str, split_str)
+    data_list = []
+    for row in data:
+        if len(row) > 1:
+            data_list.append([cell for cell in row.split(split_str)])
+    return data_list
 
 
 def _minus_days_of_two_dates(first_date, second_date):

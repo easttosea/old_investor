@@ -16,7 +16,7 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
         self.sort_column = 'modified_rate_of_return'
         self.sort_ascending = False
         self.cell_row = 0
-        self.selected_mother_code = ''
+        self.selected_m_code = ''
         self.selected_a_code = ''
         self.selected_b_code = ''
         self.tableWidget_list.setRowCount(0)
@@ -42,13 +42,13 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
 
     def fill_table_list(self):
         self.frame_realtime = self.frame_realtime.sort_values(by=self.sort_column, ascending=self.sort_ascending)
-        if self.selected_mother_code == '':
-            self.selected_mother_code = self.frame_realtime.index[0]
+        if self.selected_m_code == '':
+            self.selected_m_code = self.frame_realtime.index[0]
         # Format the data to strings
         frame_list = self.frame_realtime.loc[:, [
             'a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount',
             'a_net_value', 'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
-            'modified_rate_of_return', 'index_name', 'index_increase_rate', 'mother_descending_distance']]
+            'modified_rate_of_return', 'i_name', 'i_increase_rate', 'm_descending_distance']]
         frame_list['a_price'] = frame_list['a_price'].map(lambda x: '%.3f' % x)
         frame_list['a_increase_rate'] = frame_list['a_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
         frame_list['a_amount'] = frame_list['a_amount'].map(lambda x: '%.1f万' % (x/10000))
@@ -61,8 +61,8 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             lambda x: '%.3f%%' % (x*100))
         for index in list(self.frame_realtime[self.frame_realtime.a_net_value == 0].index):
             frame_list.loc[index, ['a_net_value', 'a_premium_rate', 'modified_rate_of_return']] = '-'
-        frame_list['index_increase_rate'] = frame_list['index_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
-        frame_list['mother_descending_distance'] = frame_list['mother_descending_distance'].map(
+        frame_list['i_increase_rate'] = frame_list['i_increase_rate'].map(lambda x: '%.2f%%' % (x*100))
+        frame_list['m_descending_distance'] = frame_list['m_descending_distance'].map(
             lambda num: '%.2f%%' % (num * 100))
         # Fill in the table of fund list
         data_list = list(frame_list.values)
@@ -80,12 +80,12 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             current_annual_rate = QtWidgets.QTableWidgetItem(fund[8])
             next_annual_rate = QtWidgets.QTableWidgetItem(fund[9])
             modified_rate_of_return = QtWidgets.QTableWidgetItem(fund[10])
-            index_name = QtWidgets.QTableWidgetItem(fund[11])
-            index_increase_rate = QtWidgets.QTableWidgetItem(fund[12])
-            mother_descending_distance = QtWidgets.QTableWidgetItem(fund[13])
+            i_name = QtWidgets.QTableWidgetItem(fund[11])
+            i_increase_rate = QtWidgets.QTableWidgetItem(fund[12])
+            m_descending_distance = QtWidgets.QTableWidgetItem(fund[13])
             cell_list = [a_code, a_name, a_price, a_increase_rate, a_amount, a_net_value, a_premium_rate, rate_rule,
-                         current_annual_rate, next_annual_rate, modified_rate_of_return, index_name,
-                         index_increase_rate, mother_descending_distance]
+                         current_annual_rate, next_annual_rate, modified_rate_of_return, i_name,
+                         i_increase_rate, m_descending_distance]
             if fund[7] in self.RATE_RULE_SHOW:
                 rate_rule.setForeground(self.RATE_RULE_SHOW[fund[7]])
             if self.frame_realtime.a_increase_rate[row] > 0:
@@ -97,31 +97,31 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
             if self.frame_realtime.years_to_delist_date[row] > 0:
                 modified_rate_of_return.setText('{0:.2f}年到期'.format(self.frame_realtime.years_to_delist_date[row]))
                 modified_rate_of_return.setForeground(self.COLOR_GRAY)
-            if self.frame_realtime.isnull().index_increase_rate[row]:
-                index_increase_rate.setText('-')
-            if self.frame_realtime.index_increase_rate[row] > 0:
-                index_increase_rate.setForeground(self.COLOR_RED)
-            elif self.frame_realtime.index_increase_rate[row] < 0:
-                index_increase_rate.setForeground(self.COLOR_GREEN)
+            if self.frame_realtime.isnull().i_increase_rate[row]:
+                i_increase_rate.setText('-')
+            if self.frame_realtime.i_increase_rate[row] > 0:
+                i_increase_rate.setForeground(self.COLOR_RED)
+            elif self.frame_realtime.i_increase_rate[row] < 0:
+                i_increase_rate.setForeground(self.COLOR_GREEN)
             if fund[0] in self.frame_realtime.a_code[self.frame_realtime.a_volume == 0]:
                 for cell in cell_list:
                     cell.setForeground(self.COLOR_GRAY)
-            if self.frame_realtime.isnull().mother_descending_distance[row]:
-                mother_descending_distance.setText('无下折')
-                mother_descending_distance.setForeground(self.COLOR_GRAY)
+            if self.frame_realtime.isnull().m_descending_distance[row]:
+                m_descending_distance.setText('无下折')
+                m_descending_distance.setForeground(self.COLOR_GRAY)
             column = 0
             for cell in cell_list:
                 cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
                 self.tableWidget_list.setItem(row, column, cell)
                 column += 1
             row += 1
-        self.tableWidget_list.selectRow(list(self.frame_realtime.index).index(self.selected_mother_code))
+        self.tableWidget_list.selectRow(list(self.frame_realtime.index).index(self.selected_m_code))
 
     def horizon_section_clicked(self, index):
         columns = ['a_code', 'a_name', 'a_price', 'a_increase_rate', 'a_amount', 'a_net_value',
                    'a_premium_rate', 'rate_rule', 'current_annual_rate', 'next_annual_rate',
-                   'modified_rate_of_return', 'index_name', 'index_increase_rate',
-                   'mother_descending_distance']
+                   'modified_rate_of_return', 'i_name', 'i_increase_rate',
+                   'm_descending_distance']
         if self.sort_column == columns[index]:
             if self.sort_ascending is True:
                 self.sort_ascending = False
@@ -133,14 +133,14 @@ class MyWindow(QtWidgets.QMainWindow, Ui_Form):
         self.fill_table_list()
 
     def cell_clicked(self, cell_row=None, cell_column=None):
-        self.selected_mother_code = self.frame_realtime.index[cell_row]
-#        self.selected_a_code = self.frame_realtime.at[self.selected_mother_code, 'a_code']
-#        self.selected_b_code = self.frame_realtime.at[self.selected_mother_code, 'b_code']
+        self.selected_m_code = self.frame_realtime.index[cell_row]
+#        self.selected_a_code = self.frame_realtime.at[self.selected_m_code, 'a_code']
+#        self.selected_b_code = self.frame_realtime.at[self.selected_m_code, 'b_code']
         self.fill_table_handicap()
 
     def fill_table_handicap(self):
-        a_pre_close = self.frame_realtime.at[self.selected_mother_code, 'a_pre_close']
-        frame_handicap = self.frame_realtime.loc[self.selected_mother_code, [
+        a_pre_close = self.frame_realtime.at[self.selected_m_code, 'a_pre_close']
+        frame_handicap = self.frame_realtime.loc[self.selected_m_code, [
             'a_a5_p', 'a_a5_v', 'a_a4_p', 'a_a4_v', 'a_a3_p', 'a_a3_v', 'a_a2_p', 'a_a2_v', 'a_a1_p',
             'a_a1_v', 'a_b1_p', 'a_b1_v', 'a_b2_p', 'a_b2_v', 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v',
             'a_b5_p', 'a_b5_v']]
