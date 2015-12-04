@@ -39,6 +39,15 @@ class StructuredFund(object):
             'b_name', 'a_to_b', 'delist_date', 'current_annual_rate', 'i_code', 'i_name'])
         frame_info_1 = frame_info_1[frame_info_1.a_code.str.contains(r'15|50')]
         frame_info_1 = frame_info_1.set_index('m_code')
+
+        # Get the one-year deposit rate
+        deposit_name, deposit_rate = ts.get_deposit_rate().loc[6, ['deposit_type', 'rate']]
+        if deposit_name == '定期存款整存整取(一年)':
+            deposit_rate = float(deposit_rate) / 100
+        else:
+            logging.error('Failure in getting deposit rate!')
+            deposit_rate = 1.5 / 100
+        # Format the data of table
         establish_date_column = []
         list_date_column = []
         delist_date_column = []
@@ -47,6 +56,7 @@ class StructuredFund(object):
         a_to_b_column = []
         current_annual_rate_column = []
         rate_rule_column = []
+        next_annual_rate_column = []
         for index in frame_info_1.index:
             fund = frame_info_1.loc[index, :]
             try:
@@ -86,6 +96,18 @@ class StructuredFund(object):
                 rate_rule = cell[0]
             current_annual_rate_column.append(current_annual_rate)
             rate_rule_column.append(rate_rule)
+            if '1年+' in rate_rule:
+                next_annual_rate = deposit_rate + float(rate_rule[3:-1]) / 100
+            elif '3年+' in rate_rule:
+                next_annual_rate = 2.75 / 100 + float(rate_rule[3:-1]) / 100
+            elif '固定' in rate_rule:
+                next_annual_rate = float(rate_rule[2:-1]) / 100
+            elif rate_rule == '特殊情况':
+                next_annual_rate = None
+            else:
+                # This is the rate of mother code '162215'
+                next_annual_rate = 0.0358
+            next_annual_rate_column.append(next_annual_rate)
         frame_info_1['establish_date'] = establish_date_column
         frame_info_1['list_date'] = list_date_column
         frame_info_1['delist_date'] = delist_date_column
@@ -94,31 +116,7 @@ class StructuredFund(object):
         frame_info_1['a_to_b'] = a_to_b_column
         frame_info_1['current_annual_rate'] = current_annual_rate_column
         frame_info_1['rate_rule'] = rate_rule_column
-        # Extract the useful strings of current_annual_rate and rate_rule
-
-
-        # Get the one-year deposit rate
-        deposit_name, deposit_rate = ts.get_deposit_rate().loc[6, ['deposit_type', 'rate']]
-        if deposit_name == '定期存款整存整取(一年)':
-            deposit_rate = float(deposit_rate) / 100
-        else:
-            logging.error('Failure in getting deposit rate!')
-            deposit_rate = 1.5 / 100
-        # Calculate the next annual rate
-        next_annual_rate_list = []
-        for cell in frame_info_1['rate_rule']:
-            if '1年+' in cell:
-                next_annual_rate = deposit_rate + _format_convert(cell[3:], 'float_percent')
-            elif '3年+' in cell:
-                next_annual_rate = 2.75 / 100 + _format_convert(cell[3:], 'float_percent')
-            elif '固定' in cell:
-                next_annual_rate = _format_convert(cell[2:], 'float_percent')
-            elif cell == '特殊情况':
-                next_annual_rate = 0
-            else:
-                next_annual_rate = 0.0358
-            next_annual_rate_list.append(next_annual_rate)
-        frame_info_1['next_annual_rate'] = next_annual_rate_list
+        frame_info_1['next_annual_rate'] = next_annual_rate_column
 
         # 2. Get the info of rate adjustment
         url = 'http://www.abcfund.cn/data/arateadjustment.php'
