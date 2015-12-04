@@ -11,7 +11,6 @@ from multiprocessing import Process, Queue
 def update_realtime_quotations(queue):
     structured_fund = data.StructuredFund()
     structured_fund.init_fund_info()
-    structured_fund.init_fund_code()
     while True:
         new_data = structured_fund.update_realtime_quotations()
         if new_data:

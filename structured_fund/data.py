@@ -21,12 +21,15 @@ class StructuredFund(object):
                                     '162215': [0.0358, '国债×1.3']}
         self.net_value_date = ''
         self.frame_info = None
-
-        self.fund_a_code = []
-        self.fund_b_code = []
+        self.init_fund_info()
+        self.fund_a_code = list(self.frame_info['a_code'].values)
+        self.fund_b_code = list(self.frame_info['b_code'].values)
         self.i_code = []
+        for code in set(self.frame_info['i_code']):
+            if code[0:3] == '399':
+                self.i_code.append(code)
         self.frame_realtime = None
-        self.update_time = ''
+        self.update_time = None
 
     def init_fund_info(self):
         """Init the info of the structured fund."""
@@ -181,12 +184,21 @@ class StructuredFund(object):
                 descending_conversion_condition = float(fund.descending_conversion_condition[7:]) * (-1)
             else:
                 descending_conversion_condition = None
-            a_net_value = float(fund.a_net_value)
-            b_net_value = float(fund.b_net_value)
+            try:
+                a_net_value = float(fund.a_net_value)
+            except ValueError:
+                a_net_value = None
+            try:
+                b_net_value = float(fund.b_net_value)
+            except ValueError:
+                b_net_value = None
             try:
                 m_net_value = float(fund.m_net_value)
             except ValueError:
-                m_net_value = (a_net_value * a_in_10 + b_net_value * (10 - a_in_10)) / 10
+                try:
+                    m_net_value = (a_net_value * a_in_10 + b_net_value * (10 - a_in_10)) / 10
+                except TypeError:
+                    m_net_value = None
             establish_date_column.append(establish_date)
             list_date_column.append(list_date)
             years_to_delist_date_column.append(years_to_delist_date)
@@ -227,18 +239,11 @@ class StructuredFund(object):
         # 5. Save the data into csv file
         self.frame_info.to_csv('../data/structured_fund_info.csv')
 
-    def init_fund_code(self):
-        self.fund_a_code = list(self.frame_info['a_code'].values)
-        self.fund_b_code = list(self.frame_info['b_code'].values)
-        self.i_code = []
-        for code in list(set(list(self.frame_info['i_code']))):
-            if code[0:3] == '399':
-                self.i_code.append(code)
-
     def update_realtime_quotations(self):
+        """Update the realtime quotations of fund a, fund b, and index"""
         # 1. Update the data of fund_a
-        frame_realtime_a = _realtime_quotations(self.fund_a_code)
-        update_time = frame_realtime_a.iat[0, -1]
+        frame_realtime_a = realtime_quotations(self.fund_a_code)
+        update_time = frame_realtime_a.time[0]
         if self.update_time != update_time:
             self.update_time = update_time
             frame_realtime_a.columns = [
@@ -246,10 +251,23 @@ class StructuredFund(object):
                 'a_b3_p', 'a_b3_v', 'a_b4_p', 'a_b4_v', 'a_b5_p', 'a_b5_v', 'a_a1_p', 'a_a1_v', 'a_a2_p',
                 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
-            for index in frame_realtime_a[frame_realtime_a.a_volume == 0].index:
-                frame_realtime_a.at[index, 'a_price'] = frame_realtime_a.at[index, 'a_pre_close']
             frame_realtime_a = frame_realtime_a.drop('a_name', axis=1)
             self.frame_realtime = self.frame_info.join(frame_realtime_a, on='a_code', how='inner')
+            price_column = []
+            for index in self.frame_realtime.index:
+                fund = frame_realtime_a.loc[index, :]
+                if datetime.time(9, 15) <= update_time <= datetime.time(9, 30):
+                    if fund.a_b1_p == fund.a_a1_p:
+                        price = fund.a_b1_p
+                    else:
+                        price = fund.a_pre_close
+                    price_column.append(price)
+                else:
+                    if fund.a_volume == 0:
+                        price = fund.a_pre_close
+            for index in frame_realtime_a[frame_realtime_a.a_volume == 0].index:
+                frame_realtime_a.at[index, 'a_price'] = frame_realtime_a.at[index, 'a_pre_close']
+
             self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
                 'a_pre_close']
             self.frame_realtime['a_increase_rate'] = self.frame_realtime[
@@ -262,7 +280,7 @@ class StructuredFund(object):
                 (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
 
             # 2. update the data of the increase rate of index
-            frame_realtime_i = _realtime_quotations(self.i_code)
+            frame_realtime_i = realtime_quotations(self.i_code)
             frame_realtime_i['i_increase_rate'] = (frame_realtime_i['price'] - frame_realtime_i[
                 'pre_close']) / frame_realtime_i['pre_close']
             frame_realtime_i = frame_realtime_i.loc[:, ['i_increase_rate']]
@@ -292,35 +310,6 @@ class StructuredFund(object):
             return True
         else:
             return False
-
-
-def _realtime_quotations(symbols):
-    # Get the list split by 30 codes, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
-    if isinstance(symbols, str):
-        code_list = [[symbols]]
-    else:
-        code_list = []
-        i = 0
-        while i < len(symbols):
-            code_list.append(symbols[i:i+30])
-            i += 30
-    # Get realtime quotations, in the format of data frame.
-    data_frame = pd.DataFrame()
-    for code_list_split_30 in code_list:
-        table = ts.get_realtime_quotes(code_list_split_30).loc[
-            :, ['code', 'name', 'price', 'volume', 'amount', 'b1_p', 'b1_v', 'b2_p', 'b2_v', 'b3_p',
-                'b3_v', 'b4_p', 'b4_v', 'b5_p', 'b5_v', 'a1_p', 'a1_v', 'a2_p', 'a2_v', 'a3_p', 'a3_v',
-                'a4_p', 'a4_v', 'a5_p', 'a5_v', 'high', 'low', 'pre_close', 'open', 'date', 'time']]
-        table = table.set_index('code')
-        data_frame = pd.concat([data_frame, table])
-    for column in ['volume', 'b1_v', 'b2_v', 'b3_v', 'b4_v', 'b5_v', 'a1_v', 'a2_v', 'a3_v', 'a4_v',
-                   'a5_v']:
-        data_frame[column] = [_format_convert(cell, 'int') for cell in data_frame[column]]
-    for column in ['price', 'amount', 'b1_p', 'b2_p', 'b3_p', 'b4_p', 'b5_p', 'a1_p', 'a2_p', 'a3_p',
-                   'a4_p', 'a5_p', 'high', 'low', 'pre_close', 'open']:
-        data_frame[column] = [_format_convert(cell, 'float') for cell in data_frame[column]]
-    data_frame['date'] = [_format_convert(cell, 'date', source_format='%Y-%m-%d') for cell in data_frame['date']]
-    return data_frame
 
 
 def web_crawler(url, reg_ex, split_str, replace_str=None, reg_ex_2=None, time_out=10):
@@ -369,25 +358,206 @@ def web_crawler(url, reg_ex, split_str, replace_str=None, reg_ex_2=None, time_ou
         return data_list, data_2
 
 
+def realtime_quotations(symbols):
+    """Get the realtime quotations of stocks/funds.
 
-def _format_convert(source_data, target_type, source_format='', decimal=2):
-    if target_type == 'int':
+    Args:
+        symbols:The code of stocks/funds.
+    Returns:
+        A data frame of the realtime quotations. The index is the code.
+    """
+    # Get the list split by 30 codes, in the format of [['code1', 'code2', ...], ['code31', 'code32', ...], ...]
+    if isinstance(symbols, str):
+        code_list = [[symbols]]
+    else:
+        code_list = []
+        i = 0
+        while i < len(symbols):
+            code_list.append(symbols[i:i+30])
+            i += 30
+    # Get realtime quotations, in the format of data frame.
+    frame_realtime = pd.DataFrame()
+    for code_list_split_30 in code_list:
+        table = ts.get_realtime_quotes(code_list_split_30).loc[
+            :, ['code', 'name', 'price', 'volume', 'amount', 'b1_p', 'b1_v', 'b2_p', 'b2_v', 'b3_p',
+                'b3_v', 'b4_p', 'b4_v', 'b5_p', 'b5_v', 'a1_p', 'a1_v', 'a2_p', 'a2_v', 'a3_p', 'a3_v',
+                'a4_p', 'a4_v', 'a5_p', 'a5_v', 'high', 'low', 'pre_close', 'open', 'date', 'time']]
+        table = table.set_index('code')
+        frame_realtime = pd.concat([frame_realtime, table])
+    price_column = []
+    volume_column = []
+    amount_column = []
+    b1_p_column = []
+    b1_v_column = []
+    b2_p_column = []
+    b2_v_column = []
+    b3_p_column = []
+    b3_v_column = []
+    b4_p_column = []
+    b4_v_column = []
+    b5_p_column = []
+    b5_v_column = []
+    a1_p_column = []
+    a1_v_column = []
+    a2_p_column = []
+    a2_v_column = []
+    a3_p_column = []
+    a3_v_column = []
+    a4_p_column = []
+    a4_v_column = []
+    a5_p_column = []
+    a5_v_column = []
+    high_column = []
+    low_column = []
+    pre_close_column = []
+    open_column = []
+    date_column = []
+    time_column = []
+    for index in frame_realtime.index:
+        fund = frame_realtime.loc[index, :]
+        price = float(fund.price)
+        volume = int(fund.volume)
+        amount = float(fund.amount)
+        b1_p = float(fund.b1_p)
+        if b1_p == 0:
+            b1_p = None
         try:
-            return int(source_data)
+            b1_v = int(fund.b1_v)
         except ValueError:
-            return 0
-    elif target_type == 'float':
+            b1_v = None
+        b2_p = float(fund.b2_p)
+        if b2_p == 0:
+            b2_p = None
         try:
-            return float(source_data)
+            b2_v = int(fund.b2_v)
         except ValueError:
-            return 0.0
-    elif target_type == 'date':
+            b2_v = None
+        b3_p = float(fund.b3_p)
+        if b3_p == 0:
+            b3_p = None
         try:
-            return datetime.datetime.strptime(source_data, source_format).date()
+            b3_v = int(fund.b3_v)
         except ValueError:
-            return None
-    elif target_type == 'float_percent':
+            b3_v = None
+        b4_p = float(fund.b4_p)
+        if b4_p == 0:
+            b4_p = None
         try:
-            return float(source_data[:-1]) / 100
+            b4_v = int(fund.b4_v)
         except ValueError:
-            return 0.0
+            b4_v = None
+        b5_p = float(fund.b5_p)
+        if b5_p == 0:
+            b5_p = None
+        try:
+            b5_v = int(fund.b5_v)
+        except ValueError:
+            b5_v = None
+        a1_p = float(fund.a1_p)
+        if a1_p == 0:
+            a1_p = None
+        try:
+            a1_v = int(fund.a1_v)
+        except ValueError:
+            a1_v = None
+        a2_p = float(fund.a2_p)
+        if a2_p == 0:
+            a2_p = None
+        try:
+            a2_v = int(fund.a2_v)
+        except ValueError:
+            a2_v = None
+        a3_p = float(fund.a3_p)
+        if a3_p == 0:
+            a3_p = None
+        try:
+            a3_v = int(fund.a3_v)
+        except ValueError:
+            a3_v = None
+        a4_p = float(fund.a4_p)
+        if a4_p == 0:
+            a4_p = None
+        try:
+            a4_v = int(fund.a4_v)
+        except ValueError:
+            a4_v = None
+        a5_p = float(fund.a5_p)
+        if a5_p == 0:
+            a5_p = None
+        try:
+            a5_v = int(fund.a5_v)
+        except ValueError:
+            a5_v = None
+        high = float(fund.high)
+        if high == 0:
+            high = None
+        low = float(fund.low)
+        if low == 0:
+            low = None
+        pre_close = float(fund.pre_close)
+        if pre_close == 0:
+            pre_close = None
+        open_d = float(fund.open)
+        if open_d == 0:
+            open_d = None
+        date = datetime.datetime.strptime(fund.date, '%Y-%m-%d').date()
+        time = datetime.datetime.strptime(fund.time, '%H:%M:%S').time()
+        price_column.append(price)
+        volume_column.append(volume)
+        amount_column.append(amount)
+        b1_p_column.append(b1_p)
+        b1_v_column.append(b1_v)
+        b2_p_column.append(b2_p)
+        b2_v_column.append(b2_v)
+        b3_p_column.append(b3_p)
+        b3_v_column.append(b3_v)
+        b4_p_column.append(b4_p)
+        b4_v_column.append(b4_v)
+        b5_p_column.append(b5_p)
+        b5_v_column.append(b5_v)
+        a1_p_column.append(a1_p)
+        a1_v_column.append(a1_v)
+        a2_p_column.append(a2_p)
+        a2_v_column.append(a2_v)
+        a3_p_column.append(a3_p)
+        a3_v_column.append(a3_v)
+        a4_p_column.append(a4_p)
+        a4_v_column.append(a4_v)
+        a5_p_column.append(a5_p)
+        a5_v_column.append(a5_v)
+        high_column.append(high)
+        low_column.append(low)
+        pre_close_column.append(pre_close)
+        open_column.append(open_d)
+        date_column.append(date)
+        time_column.append(time)
+    frame_realtime['price'] = price_column
+    frame_realtime['volume'] = volume_column
+    frame_realtime['amount'] = amount_column
+    frame_realtime['b1_p'] = b1_p_column
+    frame_realtime['b1_v'] = b1_v_column
+    frame_realtime['b2_p'] = b2_p_column
+    frame_realtime['b2_v'] = b2_v_column
+    frame_realtime['b3_p'] = b3_p_column
+    frame_realtime['b3_v'] = b3_v_column
+    frame_realtime['b4_p'] = b4_p_column
+    frame_realtime['b4_v'] = b4_v_column
+    frame_realtime['b5_p'] = b5_p_column
+    frame_realtime['b5_v'] = b5_v_column
+    frame_realtime['a1_p'] = a1_p_column
+    frame_realtime['a1_v'] = a1_v_column
+    frame_realtime['a2_p'] = a2_p_column
+    frame_realtime['a2_v'] = a2_v_column
+    frame_realtime['a3_p'] = a3_p_column
+    frame_realtime['a3_v'] = a3_v_column
+    frame_realtime['a4_p'] = a4_p_column
+    frame_realtime['a4_v'] = a4_v_column
+    frame_realtime['a5_p'] = a5_p_column
+    frame_realtime['a5_v'] = a5_v_column
+    frame_realtime['high'] = high_column
+    frame_realtime['low'] = low_column
+    frame_realtime['pre_close'] = pre_close_column
+    frame_realtime['open'] = open_column
+    frame_realtime['date'] = date_column
+    frame_realtime['time'] = time_column
+    return frame_realtime
