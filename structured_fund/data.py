@@ -4,9 +4,7 @@ import re
 import socket
 import datetime
 import urllib
-import sqlite3
 import pandas as pd
-from sqlalchemy import create_engine
 import tushare as ts
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -240,7 +238,12 @@ class StructuredFund(object):
         self.frame_info.to_csv('../data/structured_fund_info.csv')
 
     def update_realtime_quotations(self):
-        """Update the realtime quotations of fund a, fund b, and index"""
+        """Update the realtime quotations of fund a, fund b, and index
+        Returns:
+            The boolean.
+            If there is new data, return True.
+            If there is no new data, return False.
+        """
         # 1. Update the data of fund_a
         frame_realtime_a = realtime_quotations(self.fund_a_code)
         update_time = frame_realtime_a.time[0]
@@ -252,61 +255,78 @@ class StructuredFund(object):
                 'a_a2_v', 'a_a3_p', 'a_a3_v', 'a_a4_p', 'a_a4_v', 'a_a5_p', 'a_a5_v', 'a_high', 'a_low',
                 'a_pre_close', 'a_open', 'a_date', 'a_time']
             frame_realtime_a = frame_realtime_a.drop('a_name', axis=1)
-            self.frame_realtime = self.frame_info.join(frame_realtime_a, on='a_code', how='inner')
-            price_column = []
-            for index in self.frame_realtime.index:
-                fund = frame_realtime_a.loc[index, :]
-                if datetime.time(9, 15) <= update_time <= datetime.time(9, 30):
-                    if fund.a_b1_p == fund.a_a1_p:
-                        price = fund.a_b1_p
-                    else:
-                        price = fund.a_pre_close
-                    price_column.append(price)
-                else:
-                    if fund.a_volume == 0:
-                        price = fund.a_pre_close
-            for index in frame_realtime_a[frame_realtime_a.a_volume == 0].index:
-                frame_realtime_a.at[index, 'a_price'] = frame_realtime_a.at[index, 'a_pre_close']
-
-            self.frame_realtime['a_increase_value'] = self.frame_realtime['a_price'] - self.frame_realtime[
-                'a_pre_close']
-            self.frame_realtime['a_increase_rate'] = self.frame_realtime[
-                                                         'a_increase_value'] / self.frame_realtime['a_pre_close']
-            self.frame_realtime['a_premium_rate'] = (self.frame_realtime['a_price'] - self.frame_realtime[
-                'a_net_value']) / self.frame_realtime['a_net_value']
-            self.frame_realtime['modified_rate_of_return'] = self.frame_realtime['next_annual_rate'] / (
-                self.frame_realtime['a_price'] - (self.frame_realtime['a_net_value'] - 1) +
-                self.frame_realtime['days_to_next_rate_adjustment_date'] / 365 *
-                (self.frame_realtime['next_annual_rate'] - self.frame_realtime['current_annual_rate']))
-
             # 2. update the data of the increase rate of index
             frame_realtime_i = realtime_quotations(self.i_code)
-            frame_realtime_i['i_increase_rate'] = (frame_realtime_i['price'] - frame_realtime_i[
-                'pre_close']) / frame_realtime_i['pre_close']
-            frame_realtime_i = frame_realtime_i.loc[:, ['i_increase_rate']]
+            frame_realtime_i = frame_realtime_i.loc[:, ['price', 'pre_close']]
+            frame_realtime_i.columns = ['i_price', 'i_pre_close']
+            self.frame_realtime = self.frame_info.join(frame_realtime_a, on='a_code', how='inner')
             self.frame_realtime = self.frame_realtime.join(frame_realtime_i, on='i_code')
-
-            # 3. Calculate the distance of irregular conversion
-            m_descending_distance_list = []
-            for code in self.frame_realtime.index:
-                fund = self.frame_realtime.loc[code, ['m_net_value', 'a_net_value', 'a_date',
-                                               'i_increase_rate', 'descending_conversion_condition']]
-                if fund.isnull().i_increase_rate or self.net_value_date == fund.a_date:
-                    m_price = fund.m_net_value
+            a_price_column = []
+            a_increase_value_column = []
+            a_increase_rate_column = []
+            a_premium_rate_column = []
+            modified_rate_of_return_column = []
+            i_increase_rate_column = []
+            m_price_column = []
+            m_descending_distance_column = []
+            for index in self.frame_realtime.index:
+                fund = self.frame_realtime.loc[index, :]
+                if datetime.time(9, 15) <= update_time <= datetime.time(9, 30):
+                    if fund.a_b1_p == fund.a_a1_p:
+                        a_price = fund.a_b1_p
+                    else:
+                        a_price = fund.a_pre_close
+                    a_price_column.append(a_price)
                 else:
-                    m_price = fund.m_net_value * (1 + fund.i_increase_rate * 0.95)
-                if fund.descending_conversion_condition == 0:
+                    if fund.a_volume == 0:
+                        a_price = fund.a_pre_close
+                    else:
+                        a_price = fund.a_price
+                a_increase_value = a_price - fund.a_pre_close
+                a_increase_rate = a_increase_value / fund.a_pre_close
+                a_premium_rate = (a_price - fund.a_net_value) / fund.a_net_value
+                if fund.rate_adjustment_condition in ['不调整', '动态调整']:
+                    modified_rate_of_return = fund.next_annual_rate / (a_price - (fund.a_net_value - 1))
+                else:
+                    modified_rate_of_return = (fund.next_annual_rate / (a_price - (fund.a_net_value - 1) +
+                                               fund.days_to_next_rate_adjustment_date / 365 *
+                                               (fund.next_annual_rate - fund.current_annual_rate)))
+                if fund.i_code in self.i_code:
+                    i_increase_rate = (fund.i_price - fund.i_pre_close) / fund.i_pre_close
+                    if self.net_value_date == fund.a_date:
+                        m_price = fund.m_net_value
+                    else:
+                        # 此处按95%仓位计算
+                        m_price = fund.m_net_value * (1 + i_increase_rate * 0.95)
+                else:
+                    i_increase_rate = None
+                    m_price = fund.m_net_value
+                if fund.isnull().descending_conversion_condition:
                     m_descending_distance = None
                 else:
                     if fund.descending_conversion_condition > 0:
-                        m_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value)/2
+                        m_descending_conversion_condition = (fund.descending_conversion_condition + fund.a_net_value) /2
                     else:
                         m_descending_conversion_condition = fund.descending_conversion_condition * (-1)
                     m_descending_distance = (m_price - m_descending_conversion_condition) / m_price
-                m_descending_distance_list.append(m_descending_distance)
-            self.frame_realtime['m_descending_distance'] = m_descending_distance_list
-            # Write into SQLite
-            self.frame_realtime.to_csv('../data/structured_fund_a_csv')
+                a_price_column.append(a_price)
+                a_increase_value_column.append(a_increase_value)
+                a_increase_rate_column.append(a_increase_rate)
+                a_premium_rate_column.append(a_premium_rate)
+                modified_rate_of_return_column.append(modified_rate_of_return)
+                i_increase_rate_column.append(i_increase_rate)
+                m_price_column.append(m_price)
+                m_descending_distance_column.append(m_descending_distance)
+            self.frame_realtime['a_price'] = a_price_column
+            self.frame_realtime['a_increase_value'] = a_increase_value_column
+            self.frame_realtime['a_increase_rate'] = a_increase_rate_column
+            self.frame_realtime['a_premium_rate'] = a_premium_rate_column
+            self.frame_realtime['modified_rate_of_return'] = modified_rate_of_return_column
+            self.frame_realtime['i_increase_rate'] = i_increase_rate_column
+            self.frame_realtime['m_price'] = m_price_column
+            self.frame_realtime['m_descending_distance'] = m_descending_distance_column
+            # Write into CSV
+            self.frame_realtime.to_csv('../data/structured_fund_a.csv')
             return True
         else:
             return False
